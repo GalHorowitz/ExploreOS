@@ -3,3 +3,24 @@
 [[package]]
 name = "bootloader"
 version = "0.1.0"
+dependencies = [
+ "cpu",
+ "lock_cell",
+ "serial",
+]
+
+[[package]]
+name = "cpu"
+version = "0.1.0"
+
+[[package]]
+name = "lock_cell"
+version = "0.1.0"
+
+[[package]]
+name = "serial"
+version = "0.1.0"
+dependencies = [
+ "cpu",
+ "lock_cell",
+]

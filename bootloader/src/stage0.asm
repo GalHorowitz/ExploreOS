@@ -67,7 +67,7 @@ protected_mode_landing_point:
 	mov gs, ax
 	
 	; Setup stack
-	mov ebp, 0x9fc00
+	mov ebp, 0x7c00
 	mov esp, ebp
 	
 	; Jump to the next bootloader stage's entry point (Defined using -D when assembling)

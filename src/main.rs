@@ -1,11 +1,16 @@
+//! Build script for the bootloader and kernel
+
 use std::error::Error;
 use std::path::Path;
 use std::process::Command;
 
 use elf_parser::ElfParser;
 
-// Creates a flattened image of the elf file at `file_path`. On success returns a tuple containing
-// (entry point vaddr, image base, image bytes)
+/// Maximum size the bootloader can be before it will overwrite BIOS data
+const MAX_BOOTLOADER_SIZE: u64 = 0x9fc00 - 0x7e00;
+
+/// Creates a flattened image of the elf file at `file_path`. On success returns a tuple containing
+/// (entry point vaddr, image base, image bytes)
 fn flatten_elf<P: AsRef<Path>>(file_path: P) -> Option<(usize, usize, Vec<u8>)> {
     let elf = std::fs::read(file_path).ok()?;
     
@@ -41,10 +46,16 @@ fn flatten_elf<P: AsRef<Path>>(file_path: P) -> Option<(usize, usize, Vec<u8>)> 
     // Zeroed flattened image
     let mut flattened = vec![0u8; program_size];
 
+    // Copy the segment into the flattened image
     parser.for_segment(|vaddr, size, init_bytes, _flags| {
-        // Copy the segment into the flattened image
+        // The segment's offset into the flat image
         let flat_offset = vaddr - program_start;
-        flattened[flat_offset..flat_offset.checked_add(size)?].copy_from_slice(init_bytes);
+        // We might not need to initialize the entire segment (e.g. bss segment)
+        let num_to_initialize = std::cmp::min(size, init_bytes.len());
+        // Copy the initialized bytes to the start of the segment
+        flattened[flat_offset..flat_offset.checked_add(num_to_initialize)?]
+            .copy_from_slice(init_bytes);
+
         Some(())
     })?;
 
@@ -79,6 +90,20 @@ fn ensure_installed(command: &str, args: &[&str], expected: &[&str]) -> Option<(
 }
 
 fn main() -> Result<(), Box<dyn Error>>{
+    let args: Vec<String> = std::env::args().collect();
+
+    if args.len() > 1 {
+        // Handle a clean argument by deleting the build directory
+        if args.len() == 2 && args[1] == "clean" {
+            if Path::new("build").is_dir() {
+                std::fs::remove_dir_all("build")?;
+            }
+            return Ok(());
+        } else {
+            return Err("Unknown argument".into());
+        }
+    }
+
     // Ensure NASM assembler is installed
     ensure_installed("nasm", &["-v"], &["NASM version"]).ok_or("NASM missing")?;
 
@@ -91,7 +116,7 @@ fn main() -> Result<(), Box<dyn Error>>{
                   missing")?;
     
     // Ensure lld linker is installed
-    ensure_installed("ld.lld", &["--version"], &["LLD"]);
+    ensure_installed("ld.lld", &["--version"], &["LLD"]).ok_or("ld.lld missing")?;
 
     // Create build directories if they do not exist
     std::fs::create_dir_all("build")?;
@@ -118,14 +143,6 @@ fn main() -> Result<(), Box<dyn Error>>{
         return Err("Unexpected bootloader base address".into());
     }
 
-    // Ensure the bootloader is small enough (we don't want to overwrite BIOS data which start at
-    // address 0x9fc00)
-    let max_image_size = 0x9fc00 - 0x7e00;
-    if image_bytes.len() > max_image_size {
-        eprintln!("Bootloader size: {}/{}", image_bytes.len(), max_image_size);
-        return Err("Bootloader too big".into());
-    }
-
     // Write out the flattened bootloader image
     std::fs::write(Path::new("build").join("bootloader.flat"), image_bytes)?;
 
@@ -139,6 +156,15 @@ fn main() -> Result<(), Box<dyn Error>>{
             stage0.to_str().unwrap()
         ]).status()?.success() {
         return Err("Failed to assemble stage0".into());
+    }
+
+    // The bootloader must be small enough so that we don't want overwrite BIOS data which starts at
+    // address 0x9fc00.
+    let final_bootloader_size = bootfile.metadata()?.len();
+    println!("Total bootloader size is {:#x} of available {:#x} [{:7.3} %]", final_bootloader_size,
+        MAX_BOOTLOADER_SIZE, 100. * (final_bootloader_size as f64)/(MAX_BOOTLOADER_SIZE as f64));
+    if final_bootloader_size > MAX_BOOTLOADER_SIZE {
+        return Err("Final bootloader size is too large".into());
     }
 
     Ok(())

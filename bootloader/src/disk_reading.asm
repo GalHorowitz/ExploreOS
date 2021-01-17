@@ -1,3 +1,5 @@
+[bits 16]
+
 load_next_stage:
 	; Check if disk extensions are available
 	mov ah, 0x41
