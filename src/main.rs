@@ -6,8 +6,10 @@ use std::process::Command;
 
 use elf_parser::ElfParser;
 
+/// Base address of the Rust bootloader
+const RUST_BOOTLOADER_BASE: usize = 0x7e00;
 /// Maximum size the bootloader can be before it will overwrite BIOS data
-const MAX_BOOTLOADER_SIZE: u64 = 0x9fc00 - 0x7e00;
+const MAX_BOOTLOADER_SIZE: u64 = 0x9fc00 - RUST_BOOTLOADER_BASE as u64;
 
 /// Creates a flattened image of the elf file at `file_path`. On success returns a tuple containing
 /// (entry point vaddr, image base, image bytes)
@@ -94,7 +96,7 @@ fn main() -> Result<(), Box<dyn Error>>{
 
     if args.len() > 1 {
         // Handle a clean argument by deleting the build directory
-        if args.len() == 2 && args[1] == "clean" {
+        if args[1] == "clean" {
             if Path::new("build").is_dir() {
                 std::fs::remove_dir_all("build")?;
             }
@@ -122,7 +124,18 @@ fn main() -> Result<(), Box<dyn Error>>{
     std::fs::create_dir_all("build")?;
     std::fs::create_dir_all("build/bootloader")?;
 
+    let bootloader_src_dir = Path::new("bootloader").join("src");
     let bootloader_build_dir = Path::new("build").join("bootloader").canonicalize()?;
+
+    // Assemble rust asm routines
+    if !Command::new("nasm").current_dir(&bootloader_src_dir).args(&[
+            "-f", "elf32",
+            "-o", bootloader_build_dir.join("rust_asm_routines.o").to_str().unwrap(),
+            &format!("-DBOOTLOADER_BASE_ADDR={}", RUST_BOOTLOADER_BASE),
+            "rust_asm_routines.asm"
+        ]).status()?.success() {
+        return Err("Failed to assemble bootloader assembly routines".into());
+    }
 
     // Build the bootloader
     if !Command::new("cargo").current_dir("bootloader")
@@ -137,8 +150,8 @@ fn main() -> Result<(), Box<dyn Error>>{
     let (entry_point, image_base, image_bytes) =
         flatten_elf(bootloader_elf).ok_or("Failed to flatten bootloader ELF")?;
 
-    // Ensure the base address is right after the boot sector (0x7c00+512)
-    if image_base != 0x7e00 {
+    // Ensure the base address is right after the boot sector
+    if image_base != RUST_BOOTLOADER_BASE {
         eprintln!("Bootloader base address: {:#x}", image_base);
         return Err("Unexpected bootloader base address".into());
     }
@@ -147,13 +160,13 @@ fn main() -> Result<(), Box<dyn Error>>{
     std::fs::write(Path::new("build").join("bootloader.flat"), image_bytes)?;
 
     // Assemble stage0
-    let stage0 = Path::new("bootloader").join("src").join("stage0.asm");
-    let bootfile = Path::new("build").join("new_os.boot");
-    if !Command::new("nasm").args(&[
+    let bootfile = Path::new("build").canonicalize()?.join("new_os.boot");
+    if !Command::new("nasm").current_dir(&bootloader_src_dir).args(&[
             "-f", "bin",
             "-o", bootfile.to_str().unwrap(),
             &format!("-DBOOTLOADER_ENTRY_POINT={}", entry_point),
-            stage0.to_str().unwrap()
+            &format!("-DBOOTLOADER_BASE_ADDR={}", RUST_BOOTLOADER_BASE),
+            "stage0.asm"
         ]).status()?.success() {
         return Err("Failed to assemble stage0".into());
     }

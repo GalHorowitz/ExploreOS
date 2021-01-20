@@ -94,8 +94,8 @@ DISK_ADDRESS_PACKET:
 	db 0x10 ; sizeof(DAP)
 	db 0x0	; reserved
 	NUM_SECTORS_TO_READ: dw 0x0
-	dw 0x7e00	; This is the address that the sectors are written to. It is encoded in
-	dw 0x0		; segment:offset, but the offset comes first, so the final address is 0x7e00
+	dw BOOTLOADER_BASE_ADDR	; This is the address that the sectors are written to. It is encoded in
+	dw 0x0					; segment:offset, but the offset comes first.
 	dq 0x1 ; LBA of start sector
 
 NO_DISK_EXTENSIONS_STR: db "FATAL: BIOS doesn't have disk extensions!", 0 
@@ -103,4 +103,4 @@ FAILED_TO_GET_DRIVE_PARAMS_STR: db "FATAL: Failed to get drive parameters!", 0
 INVALID_SECTOR_SIZE_STR: db "FATAL: Sector size is not 512!", 0
 TOO_MANY_SECTORS_STR: db "FATAL: Too many sectors to read!", 0
 FAILED_TO_READ_STR: db "FATAL: Failed to read disk!", 0
-LANDED_STR: db "SUCCESS: Loaded the next bootloader stage.", 0
+LANDED_STR: db "SUCCESS: Loaded the next stage.", 0

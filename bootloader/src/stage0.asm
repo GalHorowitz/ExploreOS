@@ -7,12 +7,12 @@ entry:
 
 ; Resets environment and then jumps to a routine which loads the next bootloader stage from disk
 reset_cs:
-	; Set ds to known state
+	; Set segments to known state and setup stack
+	mov bp, 0x7c00
 	xor ax, ax
 	mov ds, ax
-
-	; Setup stack
-	mov bp, 0x7c00
+	mov es, ax
+	mov ss, ax
 	mov sp, bp
 
 	; Clear direction flag
@@ -29,7 +29,7 @@ reset_cs:
 
 BOOT_DRIVE: db 0
 
-%include "bootloader/src/disk_reading.asm"
+%include "disk_reading.asm"
 
 ; Switches to protected mode
 switch_to_protected_mode:
@@ -53,12 +53,12 @@ switch_to_protected_mode:
 	; Set cs to the new code segment
 	jmp CODE_SEG:protected_mode_landing_point
 
-%include "bootloader/src/gdt.asm"
+%include "gdt.asm"
 
 [bits 32]
 ; Setup after switching to protected mode, and jumps to next bootloader stage
 protected_mode_landing_point:
-	; Update all data segment register to the new segment index
+	; Update all data segment registers to the new segment index
 	mov ax, DATA_SEG
 	mov ds, ax
 	mov ss, ax
@@ -77,4 +77,4 @@ times 510-($-$$) db 0	; Padding to set the last 2 bytes in the boot sector
 dw 0xAA55				; Boot sector magic
 
 ; Include the next bootloader stage
-INCBIN "build/bootloader.flat"
+INCBIN "../../build/bootloader.flat"
