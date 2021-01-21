@@ -10,6 +10,7 @@ edition = "2018"
 cpu = { path = "../shared/cpu" }
 lock_cell = { path = "../shared/lock_cell" }
 serial = { path = "../shared/serial" }
+range_set = { path = "../shared/range_set" }
 
 [profile.dev]
 panic = "abort"

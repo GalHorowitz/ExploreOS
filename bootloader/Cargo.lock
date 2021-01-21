@@ -6,6 +6,7 @@ version = "0.1.0"
 dependencies = [
  "cpu",
  "lock_cell",
+ "range_set",
  "serial",
 ]
 
@@ -15,6 +16,10 @@ version = "0.1.0"
 
 [[package]]
 name = "lock_cell"
+version = "0.1.0"
+
+[[package]]
+name = "range_set"
 version = "0.1.0"
 
 [[package]]

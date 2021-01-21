@@ -6,8 +6,8 @@ global invoke_realmode_interrupt
 invoke_realmode_interrupt:
 	; Save register state
 	pushad
-
-	; Load real mode GDT (with code segment base at bootloader base and data segment base at 0)
+	
+	; Load real mode GDT
 	lgdt [ds:RMGDT_DESCRIPTOR]
 
 	; Reset selectors
@@ -63,9 +63,9 @@ actual_interrupt_invoker:
 	mov ecx, DWORD [eax + (1*4)]
 	mov edx, DWORD [eax + (2*4)]
 	mov ebx, DWORD [eax + (3*4)]
-	mov ebp, DWORD [eax + (5*4)]
-	mov esi, DWORD [eax + (6*4)]
-	mov edi, DWORD [eax + (7*4)]
+	mov ebp, DWORD [eax + (4*4)]
+	mov esi, DWORD [eax + (5*4)]
+	mov edi, DWORD [eax + (6*4)]
 	mov eax, DWORD [eax]
 
 	; We 'return' into the interrupt handler
