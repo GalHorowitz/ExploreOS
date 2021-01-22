@@ -139,4 +139,4 @@ protected_mode_landing_point:
 	ret
 
 %include "rmgdt.asm"
-%include "gdt.asm"
+%include "stage0/gdt.asm"

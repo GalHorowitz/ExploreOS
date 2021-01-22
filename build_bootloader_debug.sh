@@ -11,4 +11,4 @@ cargo run
 
 # rm build/temp_stage0.asm
 # ld.lld -o build/new_os.elf -Ttext 0x7c00 -nostdlib build/new_os_boot.elf 
-qemu-system-i386 -serial stdio -drive format=raw,file=build/new_os.boot -s -S
+qemu-system-i386 -serial stdio -drive format=raw,file=build/new_os.img -s -S

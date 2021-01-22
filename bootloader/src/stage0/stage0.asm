@@ -70,8 +70,13 @@ protected_mode_landing_point:
 	mov ebp, 0x7c00
 	mov esp, ebp
 	
+
 	; Push the size argument
 	push dword BOOTLOADER_SIZE
+	; Push the boot drive id argument
+	xor eax, eax
+	mov al, byte [BOOT_DRIVE]
+	push eax
 	; Jump to the next bootloader stage's entry point (Defined using -D when assembling)
 	call BOOTLOADER_ENTRY_POINT
 
@@ -79,6 +84,6 @@ times 510-($-$$) db 0	; Padding to set the last 2 bytes in the boot sector
 dw 0xAA55				; Boot sector magic
 
 ; Include the next bootloader stage
-INCBIN "../../build/bootloader.flat"
+INCBIN "../../../build/bootloader.flat"
 
 BOOTLOADER_SIZE equ ($-$$)

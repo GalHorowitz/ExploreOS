@@ -137,9 +137,9 @@ pub fn init(bootloader_size: u32) {
         end: 0x4FF
     });
 
-    // Mark the stack as reserved (1024 bytes)
+    // Mark the stack as reserved (0x1200 bytes)
     available_memory.remove(InclusiveRange {
-        start: 0x7800,
+        start: 0x6a00,
         end: 0x7c00 - 1
     });
 

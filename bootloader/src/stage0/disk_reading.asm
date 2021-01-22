@@ -9,27 +9,8 @@ load_next_stage:
 	cmp bx, 0xAA55
 	jne no_disk_extenstions
 
-	; Get drive parameters to figure out how many sectors we need to read
-	mov ah, 0x48
-	mov dl, [BOOT_DRIVE]
-	lea si, [DRIVE_PARAMETERS_RESULT]
-	int 0x13
-	jc failed_to_get_drive_params
-
-	; Ensure the BIOS reports sector number of 512-bytes sectors, else bail
-	mov ax, [BYTES_PER_SECTOR]
-	cmp ax, 512
-	jne invalid_sector_size
-
-	; Make sure we don't need to load more than 0xFFFF sectors
-	mov ax, [NUM_SECTORS_HIGH]
-	test ax, ax
-	jnz too_many_sectors
-
 	; Update the number of sectors to read in the DISK ADDRESS PACKET
-	mov ax, [NUM_SECTORS_LOW]
-	dec ax ; We don't read the boot sector
-	mov [NUM_SECTORS_TO_READ], ax
+	mov word [NUM_SECTORS_TO_READ], BOOTLOADER_SECTORS
 
 	; Read the sectors to the address right after the boot sector
 	mov ah, 0x42
@@ -46,21 +27,6 @@ load_next_stage:
 
 no_disk_extenstions:
 	lea si, [NO_DISK_EXTENSIONS_STR]
-	call print
-	jmp $
-
-failed_to_get_drive_params:
-	lea si, [FAILED_TO_GET_DRIVE_PARAMS_STR]
-	call print
-	jmp $
-
-invalid_sector_size:
-	lea si, [INVALID_SECTOR_SIZE_STR]
-	call print
-	jmp $
-
-too_many_sectors:
-	lea si, [TOO_MANY_SECTORS_STR]
 	call print
 	jmp $
 
@@ -82,14 +48,6 @@ print_loop:
 print_end:
 	ret
 
-DRIVE_PARAMETERS_RESULT:
-	dw 0x1A ; size of result buffer, 0x1A means to use v1.x version
-	dw 0
-	dd 0, 0, 0
-	NUM_SECTORS_LOW: dd 0
-	NUM_SECTORS_HIGH: dd 0
-	BYTES_PER_SECTOR: dw 0
-
 DISK_ADDRESS_PACKET:
 	db 0x10 ; sizeof(DAP)
 	db 0x0	; reserved
@@ -104,3 +62,7 @@ INVALID_SECTOR_SIZE_STR: db "FATAL: Sector size is not 512!", 0
 TOO_MANY_SECTORS_STR: db "FATAL: Too many sectors to read!", 0
 FAILED_TO_READ_STR: db "FATAL: Failed to read disk!", 0
 LANDED_STR: db "SUCCESS: Loaded the next stage.", 0
+
+; Sector count derived from the BOOTLOADE_SIZE in bytes. We divide by 512 while rounding up to get
+; the sector count, and then subtract one to compensate for the boot sector which is already loaded
+BOOTLOADER_SECTORS equ (((BOOTLOADER_SIZE + 511)/512) - 1)

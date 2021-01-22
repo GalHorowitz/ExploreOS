@@ -1,46 +1,37 @@
 //! The entry point for the Rust bootloader
 
+#![feature(panic_info_message, default_alloc_error_handler)]
 #![no_std]
 #![no_main]
-#![feature(panic_info_message, default_alloc_error_handler)]
 
 extern crate alloc;
-
-use serial::{print, println};
 
 mod compiler_reqs;
 mod panic;
 mod real_mode;
 mod memory_manager;
 mod screen;
+mod disk_reading;
+
+use serial::println;
 
 #[no_mangle]
-pub extern fn entry(bootloader_size: u32) -> ! {
+pub extern fn entry(boot_disk_id: u8, bootloader_size: u32) -> ! {
     serial::init();
-
-    print!("This is a print macro! ");
-    println!("This is a print macro with a new line!");
-    
     memory_manager::init(bootloader_size);
 
-    let mut foo = alloc::vec::Vec::new();
-    foo.push(5);
-    foo.push(5);
-    foo.push(6);
-    foo.push(-5555);
-    foo.push(2);
-    foo.remove(1);
-    println!("{:?}", foo);
-
-    let bar = alloc::format!("apples {}", foo[2]);
-    println!("{}", bar);
+    println!("Bootloader running!");
 
     screen::reset();
-    for _ in 0..10 {
-        screen::print("Hello!\n");
+    screen::print("Welcome to the bootloader! Loading kernel from disk...\n");
+
+    let kernel_image = disk_reading::read_kernel(boot_disk_id, bootloader_size);
+    if kernel_image.is_none() {
+        screen::print("Failed to read kernel from disk :(");
+        cpu::halt();
     }
-    screen::print_with_attributes("This is colored!", 0xB4);
-    
+    let kernel_image = kernel_image.unwrap();
+    screen::print(&alloc::format!("Read {} bytes from disk!", kernel_image.len()));
 
     cpu::halt();
 }

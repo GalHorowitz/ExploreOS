@@ -124,23 +124,3 @@ macro_rules! println {
         }
     };
 }
-
-#[macro_export]
-macro_rules! eprint {
-    ($($arg:tt)*) => {
-        {
-            use core::fmt::Write;
-            let _ = write!($crate::SerialWriter, $($arg)*);
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! eprintln {
-    ($($arg:tt)*) => {
-        {
-            use core::fmt::Write;
-            let _ = writeln!($crate::SerialWriter, $($arg)*);
-        }
-    };
-}

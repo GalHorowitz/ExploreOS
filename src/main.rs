@@ -161,7 +161,7 @@ fn main() -> Result<(), Box<dyn Error>>{
 
     // Assemble stage0
     let bootfile = Path::new("build").canonicalize()?.join("new_os.boot");
-    if !Command::new("nasm").current_dir(&bootloader_src_dir).args(&[
+    if !Command::new("nasm").current_dir(&bootloader_src_dir.join("stage0")).args(&[
             "-f", "bin",
             "-o", bootfile.to_str().unwrap(),
             &format!("-DBOOTLOADER_ENTRY_POINT={}", entry_point),
@@ -180,5 +180,18 @@ fn main() -> Result<(), Box<dyn Error>>{
         return Err("Final bootloader size is too large".into());
     }
 
+    // Build the final os image, the bootloader comes first
+    let mut os_image = std::fs::read(bootfile)?;
+    // If the bootloader doesn't end on a sector boundary, pad it with zeros
+    if os_image.len() % 512 != 0 {
+        os_image.resize(os_image.len() + (512 - (os_image.len()%512)), 0);
+    }
+    // Read the kernel image
+    let kernel_image = std::fs::read(Path::new("build").join("kernel.img"))?;
+    // Append the kernel image to the os image
+    os_image.extend(kernel_image);
+    // Write out the os image
+    std::fs::write(Path::new("build").join("new_os.img"), os_image)?;
+    
     Ok(())
 }

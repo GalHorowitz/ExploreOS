@@ -1,3 +1,3 @@
 #!/bin/sh
 
-qemu-system-i386 -serial stdio -drive format=raw,file=build/new_os.boot
+qemu-system-i386 -serial stdio -drive format=raw,file=build/new_os.img
