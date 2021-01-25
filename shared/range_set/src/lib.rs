@@ -165,7 +165,7 @@ impl RangeSet {
     /// Allocates `size` bytes from the RangeSet under the `align` alignment requirement.
     /// 
     /// The alignment must be a power of two.
-    pub fn allocate(&mut self, size: u32, align: u32) -> Option<usize> {
+    pub fn allocate(&mut self, size: u32, align: u32) -> Option<u32> {
         // We can't allocate a unique address for zero bytes
         if size == 0 {
             return None;
@@ -183,6 +183,13 @@ impl RangeSet {
             // We round up the start of the range to the alignment, so we can calculate if the
             // aligned allocation will fit in this range.
             let next_aligned_start = round_up_to_pow_of_2(self.ranges[i].start, align);
+
+            if next_aligned_start > self.ranges[i].end {
+                // If the aligned start address doesn't fit inside the range, then this is not a
+                // valid allocation point
+                continue;
+            }
+
             if size <= (self.ranges[i].end - next_aligned_start).saturating_add(1) {
                 // If it does fit, we calculate the padding needed
                 let padding_needed = next_aligned_start - self.ranges[i].start;
@@ -204,7 +211,7 @@ impl RangeSet {
             });
 
             // Return the allocation position
-            Some(allocation_addr as usize)
+            Some(allocation_addr)
         } else {
             // If we went through every range and found no range with room, we return `None`
             None

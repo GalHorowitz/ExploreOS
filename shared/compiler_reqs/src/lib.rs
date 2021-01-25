@@ -1,5 +1,7 @@
 //! Some basic memory functions required for compiling for bare metal Rust
 
+#![no_std]
+
 /// libc `memset` implementation in Rust
 /// 
 /// ### Parameters
@@ -63,8 +65,8 @@ pub unsafe extern fn memmove(dest: *mut u8, src: *const u8, n: usize) -> *mut u8
 /// 
 /// ### Parameters
 /// 
-/// * `s1` - Pointer to memory to compare with s2
-/// * `s2` - Pointer to memory to compare with s1
+/// * `s1` - Pointer to memory to compare with `s2`
+/// * `s2` - Pointer to memory to compare with `s1`
 /// * `n`  - Number of bytes to compare
 #[no_mangle]
 pub unsafe extern fn memcmp(s1: *const u8, s2: *const u8, n: usize) -> i32 {
@@ -78,4 +80,16 @@ pub unsafe extern fn memcmp(s1: *const u8, s2: *const u8, n: usize) -> i32 {
         i += 1;
     }
     0
+}
+
+/// `bcmp` implementation in Rust
+/// 
+/// ### Parameters
+/// 
+/// * `s1` - Pointer to byte sequence to compare with `s2`
+/// * `s2` - Pointer to byte sequence to compare with `s1`
+/// * `n`  - Number of bytes to compare
+#[no_mangle]
+pub unsafe extern fn bcmp(s1: *const u8, s2: *const u8, n: usize) -> i32 {
+    return memcmp(s1, s2, n);
 }

@@ -123,6 +123,7 @@ fn main() -> Result<(), Box<dyn Error>>{
     // Create build directories if they do not exist
     std::fs::create_dir_all("build")?;
     std::fs::create_dir_all("build/bootloader")?;
+    std::fs::create_dir_all("build/kernel")?;
 
     let bootloader_src_dir = Path::new("bootloader").join("src");
     let bootloader_build_dir = Path::new("build").join("bootloader").canonicalize()?;
@@ -180,6 +181,14 @@ fn main() -> Result<(), Box<dyn Error>>{
         return Err("Final bootloader size is too large".into());
     }
 
+    // Build the kernel
+    let kernel_build_dir = Path::new("build").join("kernel").canonicalize()?;
+    if !Command::new("cargo").current_dir("kernel")
+        .args(&["build", "--release", "--target-dir", kernel_build_dir.to_str().unwrap()])
+        .status()?.success() {
+        return Err("Failed to build kernel".into());
+    }
+
     // Build the final os image, the bootloader comes first
     let mut os_image = std::fs::read(bootfile)?;
     // If the bootloader doesn't end on a sector boundary, pad it with zeros
@@ -187,7 +196,8 @@ fn main() -> Result<(), Box<dyn Error>>{
         os_image.resize(os_image.len() + (512 - (os_image.len()%512)), 0);
     }
     // Read the kernel image
-    let kernel_image = std::fs::read(Path::new("build").join("kernel.img"))?;
+    let kernel_elf = kernel_build_dir.join("i586-unknown-linux-gnu").join("release").join("kernel");
+    let kernel_image = std::fs::read(kernel_elf)?;
     // Append the kernel image to the os image
     os_image.extend(kernel_image);
     // Write out the os image

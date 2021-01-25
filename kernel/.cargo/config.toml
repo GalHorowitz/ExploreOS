@@ -1,0 +1,9 @@
+[build]
+target = "i586-unknown-linux-gnu"
+
+[target.i586-unknown-linux-gnu]
+rustflags = ["-C", "relocation-model=static", "-C", "linker=ld.lld", "-C",
+	"""link-args=--entry=entry --nostdlib -znodefaultlib --image-base=0xC0000000 --no-eh-frame-hdr 
+	-zseparate-loadable-segments -znognustack --strip-all"""
+	# separate-loadable-segments is the key for page-aligned segments
+]

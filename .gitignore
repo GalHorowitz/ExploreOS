@@ -1,3 +1,4 @@
 /target
 /bootloader/target
+/kernel/target
 /build

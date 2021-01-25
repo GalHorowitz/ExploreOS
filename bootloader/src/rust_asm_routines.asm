@@ -140,3 +140,37 @@ protected_mode_landing_point:
 
 %include "rmgdt.asm"
 %include "stage0/gdt.asm"
+
+[bits 32]
+global jump_to_kernel
+jump_to_kernel:
+	; [esp + 0x04] - kernel entry
+	; [esp + 0x08] - kernel stack
+	; [esp + 0x0c] - kernel param
+	; [esp + 0x10] - new cr3
+
+	; Set the new cr3
+	mov eax, [esp + 0x10] ; new cr3
+	mov cr3, eax
+
+	; Set cr0 to a known state
+	mov eax, cr0
+	or eax, (1<<16) ; Write Protect
+	or eax, (1<<31) ; Paging
+	mov cr0, eax
+
+	mov eax, [esp + 0x04] ; kernel entry
+	mov ebx, [esp + 0x0c] ; kernel param
+	
+	; Setup new stack
+	mov ebp, [esp + 0x08] ; stack
+	mov esp, ebp
+
+	; Call kernel code
+	push ebx
+	call eax
+kernel_return:
+	; If we for some reason ever return, we halt
+	cli
+	hlt
+

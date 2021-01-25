@@ -1,3 +1,6 @@
+//! Minimal parser for ELF files. This is not a general-purpose ELF parser; it only parses the
+//! information we care about.
+
 #![no_std]
 
 use core::convert::TryInto;
@@ -26,8 +29,8 @@ pub struct ElfParser<'a> {
 }
 
 impl<'a> ElfParser<'a> {
-    // Validate the passed ELF file, and return a processed version of the ELF which can be queried
-    // for information about the ELF.
+    /// Validate the passed ELF file, and return a processed version of the ELF which can be queried
+    /// for information about the ELF.
     pub fn parse(bytes: &'a [u8]) -> Option<Self> {
         // Check for ELF magic
         if bytes.get(0..4) != Some(b"\x7fELF") {
@@ -82,7 +85,7 @@ impl<'a> ElfParser<'a> {
             entry_point,
             segment_count: program_header_count,
             segment_headers_offset: program_header_offset,
-            raw_bytes: bytes
+            raw_bytes: bytes,
         })
     }
 
@@ -124,5 +127,23 @@ impl<'a> ElfParser<'a> {
         }
 
         Some(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use crate::*;
+    extern crate std;
+
+    #[test]
+    fn works() {
+        let file = std::fs::read("../../build/kernel/i586-unknown-linux-gnu/release/kernel").unwrap();
+        let parser = ElfParser::parse(&file).unwrap();
+        parser.for_segment(|vaddr, vsize, raw_bytes, flags| {
+            std::println!("{:#09x} {} {:03b}", vaddr, vsize, flags);
+            std::println!("{:x?}", raw_bytes);
+            Some(())
+        }).unwrap();
     }
 }

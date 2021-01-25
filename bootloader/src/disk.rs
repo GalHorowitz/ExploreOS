@@ -3,6 +3,7 @@ use alloc::vec::Vec;
 use crate::real_mode::{invoke_realmode_interrupt, RegisterState};
 
 /// The packet used to request a disk read from the BIOS
+#[derive(Debug)]
 #[repr(C)]
 struct DiskAddressPacket {
 	struct_size:            u8,
@@ -30,32 +31,29 @@ pub fn read_kernel(boot_disk_id: u8, bootloader_size: u32) -> Option<Vec<u8>> {
     // Local stack buffer which is under the 64K limit that the BIOS can read to
     let mut sector_buffer = [0u8; 512*SECTOR_BUFFER_SIZE as usize];
 
-    // We only read one sector each time
-    let mut disk_address_packet = DiskAddressPacket {
-        struct_size: 0x10,
-        _unused: 0,
-        sector_read_count: 0,
-        memory_buffer_offset: &mut sector_buffer as *mut _ as u16,
-        memory_buffer_segment: 0,
-        start_sector_offset: 0
-    };
-
-    let mut register_context = RegisterState {
-        eax: 0x4200,
-        edx: boot_disk_id as u32,
-        esi: &mut disk_address_packet as *mut DiskAddressPacket as u32,
-        ..Default::default()
-    };
-
 	let mut kernel_image: Vec<u8> = Vec::with_capacity((kernel_sector_count * 512) as usize);
 
 	// Read each kernel sector
-	let mut sector_off = 0;
-    while sector_off < kernel_sector_count {
-        // Set the number of sectors to read
-		disk_address_packet.sector_read_count = SECTOR_BUFFER_SIZE as u16;
-        // Set the disk sector offset
-        disk_address_packet.start_sector_offset = (bootloader_sector_count + sector_off) as u64;
+    for sector_off in (0..kernel_sector_count).step_by(SECTOR_BUFFER_SIZE as usize) {
+        // We either read `SECTOR_BUFFER_SIZE` sectors, or if we are at the end of the image, the
+        // remaining sectors
+        let sectors_to_read = core::cmp::min(SECTOR_BUFFER_SIZE, kernel_sector_count - sector_off);
+        
+        let mut disk_address_packet = DiskAddressPacket {
+            struct_size: 0x10,
+            _unused: 0,
+            sector_read_count: sectors_to_read as u16,
+            memory_buffer_offset: &mut sector_buffer as *mut _ as u16,
+            memory_buffer_segment: 0,
+            start_sector_offset: (bootloader_sector_count + sector_off) as u64
+        };
+    
+        let mut register_context = RegisterState {
+            eax: 0x4200,
+            edx: boot_disk_id as u32,
+            esi: &mut disk_address_packet as *mut DiskAddressPacket as u32,
+            ..Default::default()
+        };
 
         // Perform the extended BIOS read
         unsafe { invoke_realmode_interrupt(0x13, &mut register_context); }
@@ -66,17 +64,10 @@ pub fn read_kernel(boot_disk_id: u8, bootloader_size: u32) -> Option<Vec<u8>> {
             return None;
         }
 
-        // We either read `SECTOR_BUFFER_SIZE` sectors, or if we are at the end of the image, the
-        // remaining sectors
-		let sectors_read = core::cmp::min(SECTOR_BUFFER_SIZE, kernel_sector_count - sector_off);
-
         // Append the read sectors to the kernel image
-		kernel_image.extend(&sector_buffer[..sectors_read as usize * 512]);
-        
-        // Advance the sector offset
-		sector_off += SECTOR_BUFFER_SIZE;
+		kernel_image.extend(&sector_buffer[..sectors_to_read as usize * 512]);
 	}
-	
+    
     println!("Read kernel image: {} bytes, at {:#x?}", kernel_image.len(), kernel_image.as_ptr());
     Some(kernel_image)
 }

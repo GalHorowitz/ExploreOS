@@ -3,7 +3,6 @@
 #![no_std]
 
 use lock_cell::LockCell;
-use core::sync::atomic::spin_loop_hint;
 
 /// A collection of 4 serial ports. These are the 4 serial ports identified by the BIOS, i.e. these
 /// are COM1-COM4 in the BDA.
@@ -89,7 +88,7 @@ unsafe fn write_byte(com_port: u16, byte: u8) {
 
     // Wait until we can transmit
     while cpu::in8(com_port + 5) & 0x20 == 0 {
-        spin_loop_hint();
+        core::hint::spin_loop();
     }
     // Write the character to the serial port
     cpu::out8(com_port, byte);

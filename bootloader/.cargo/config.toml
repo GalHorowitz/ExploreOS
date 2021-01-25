@@ -3,5 +3,6 @@ target = "i586-unknown-linux-gnu"
 
 [target.i586-unknown-linux-gnu]
 rustflags = ["-C", "relocation-model=static", "-C", "linker=ld.lld", "-C",
-	"link-args=--entry=entry --nostdlib -znodefaultlib -zmax-page-size=16 --image-base=0x7e00 --no-eh-frame-hdr ../build/bootloader/rust_asm_routines.o"
+	"""link-args=--entry=entry --nostdlib -znodefaultlib -zmax-page-size=16 --image-base=0x7e00
+	--no-eh-frame-hdr ../build/bootloader/rust_asm_routines.o"""
 ]

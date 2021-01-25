@@ -1,5 +1,5 @@
 [package]
-name = "bootloader"
+name = "kernel"
 version = "0.1.0"
 authors = ["Gal Horowitz <galush.horowitz@gmail.com>"]
 edition = "2018"
@@ -7,10 +7,8 @@ edition = "2018"
 [dependencies]
 compiler_reqs = { path = "../shared/compiler_reqs" }
 cpu = { path = "../shared/cpu" }
-lock_cell = { path = "../shared/lock_cell" }
 serial = { path = "../shared/serial" }
 range_set = { path = "../shared/range_set" }
-elf_parser = { path = "../shared/elf_parser" }
 page_tables = { path = "../shared/page_tables" }
 
 [profile.dev]
@@ -19,6 +17,6 @@ debug = true
 
 [profile.release]
 panic = "abort"
-debug = true
-opt-level = "z"
+debug = false
+opt-level = 2
 lto = "fat"

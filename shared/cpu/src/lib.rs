@@ -27,8 +27,22 @@ pub unsafe fn out8(addr: u16, data: u8) {
 
 /// Writes `data` to the specified IO port `addr`
 #[inline]
-pub unsafe fn out16(port: u16, data: u16) {
-    asm!("out dx, ax", in("ax") data, in("dx") port, options(nomem, preserves_flags, nostack));
+pub unsafe fn out16(addr: u16, data: u16) {
+    asm!("out dx, ax", in("ax") data, in("dx") addr, options(nomem, preserves_flags, nostack));
+}
+
+/// Invalidates TLB entries for the page of the address `addr`
+#[inline]
+pub unsafe fn invlpg(addr: usize) {
+    asm!("invlpg [{}]", in(reg) addr, options(preserves_flags, nostack));
+}
+
+/// Gets the value held in CR3
+#[inline]
+pub unsafe fn get_cr3() -> usize {
+    let cr3: usize;
+    asm!("mov {}, cr3", out(reg) cr3, options(nomem, preserves_flags, nostack));
+    cr3
 }
 
 /// Disables interrupts and halts the cpu

@@ -3,7 +3,7 @@
 #![no_std]
 
 use core::cell::UnsafeCell;
-use core::sync::atomic::{AtomicUsize, Ordering, spin_loop_hint};
+use core::sync::atomic::{AtomicUsize, Ordering};
 use core::ops::{Drop, Deref, DerefMut};
 
 /// Spin lock for interior mutability. This lock must not be used in an interrupt context, or it
@@ -37,7 +37,7 @@ impl<T> LockCell<T>  {
 
         // Wait until it is our turn, i.e. we are the owner
         while ticket != self.owner_ticket.load(Ordering::SeqCst) {
-            spin_loop_hint();
+            core::hint::spin_loop();
         }
 
         LockCellGuard {
