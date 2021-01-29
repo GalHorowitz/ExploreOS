@@ -189,6 +189,9 @@ fn main() -> Result<(), Box<dyn Error>>{
         return Err("Failed to build kernel".into());
     }
 
+    let kernel_elf = kernel_build_dir.join("i586-unknown-linux-gnu").join("release").join("kernel");
+    println!("Total kernel size is {:#x}", kernel_elf.metadata()?.len());
+
     // Build the final os image, the bootloader comes first
     let mut os_image = std::fs::read(bootfile)?;
     // If the bootloader doesn't end on a sector boundary, pad it with zeros
@@ -196,7 +199,6 @@ fn main() -> Result<(), Box<dyn Error>>{
         os_image.resize(os_image.len() + (512 - (os_image.len()%512)), 0);
     }
     // Read the kernel image
-    let kernel_elf = kernel_build_dir.join("i586-unknown-linux-gnu").join("release").join("kernel");
     let kernel_image = std::fs::read(kernel_elf)?;
     // Append the kernel image to the os image
     os_image.extend(kernel_image);

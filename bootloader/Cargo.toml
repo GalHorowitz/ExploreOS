@@ -12,6 +12,7 @@ serial = { path = "../shared/serial" }
 range_set = { path = "../shared/range_set" }
 elf_parser = { path = "../shared/elf_parser" }
 page_tables = { path = "../shared/page_tables" }
+boot_args = { path = "../shared/boot_args" }
 
 [profile.dev]
 panic = "abort"

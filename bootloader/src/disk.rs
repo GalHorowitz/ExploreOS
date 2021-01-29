@@ -1,4 +1,5 @@
-use serial::println;
+//! Wrappers for BIOS disk routines
+
 use alloc::vec::Vec;
 use crate::real_mode::{invoke_realmode_interrupt, RegisterState};
 
@@ -60,7 +61,7 @@ pub fn read_kernel(boot_disk_id: u8, bootloader_size: u32) -> Option<Vec<u8>> {
     
         // CF is set on error
 		if (register_context.eflags & 1) != 0 {
-            println!("Failed to read drive sector (int 13h/ah=42h)");
+            serial::println!("Failed to read drive sector (int 13h/ah=42h)");
             return None;
         }
 
@@ -68,7 +69,7 @@ pub fn read_kernel(boot_disk_id: u8, bootloader_size: u32) -> Option<Vec<u8>> {
 		kernel_image.extend(&sector_buffer[..sectors_to_read as usize * 512]);
 	}
     
-    println!("Read kernel image: {} bytes, at {:#x?}", kernel_image.len(), kernel_image.as_ptr());
+    serial::println!("Read kernel image: {} bytes, at {:#x?}", kernel_image.len(), kernel_image.as_ptr());
     Some(kernel_image)
 }
 
@@ -104,12 +105,12 @@ fn get_disk_sector_count(disk_id: u8) -> Option<u64> {
 
     // CF is set on error
     if (register_context.eflags & 1) != 0 {
-        println!("Failed to get drive parameters (int 13h/ah=48h)");
+        serial::println!("Failed to get drive parameters (int 13h/ah=48h)");
         return None;
     }
 
     if drive_params.bytes_per_sector != 512 {
-        println!("Boot disk uses non standard sector size");
+        serial::println!("Boot disk uses non standard sector size");
         return None;
     }
 	

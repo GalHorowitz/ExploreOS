@@ -1,9 +1,11 @@
+//! Basic panic handler which prints the message to serial and halts
+
 use core::panic::PanicInfo;
 use serial::print;
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    print!("[PANIC!]");
+    print!("[BOOTLOADER PANIC!]");
 
     if let Some(location) = info.location() {
         print!(" {}:{}:{}", location.file(), location.line(), location.column());

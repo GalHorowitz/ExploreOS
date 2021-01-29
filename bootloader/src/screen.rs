@@ -1,3 +1,5 @@
+//! Basic VGA text-mode print functions
+
 const SCREEN_BUFFER_ADDRESS: usize = 0xb8000;
 const SCREEN_HEIGHT: usize = 25;
 const SCREEN_WIDTH: usize = 80;

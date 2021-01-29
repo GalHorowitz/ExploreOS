@@ -1,3 +1,5 @@
+//! Definitions for the `rust_asm_routines.asm` real-mode interaction
+
 /// x86 register state for invoking interrupts
 #[derive(Default)]
 #[repr(C)]

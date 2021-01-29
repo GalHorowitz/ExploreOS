@@ -1,3 +1,5 @@
+//! Responisble for physical memory manager in the bootloader
+
 use crate::real_mode::{invoke_realmode_interrupt, RegisterState};
 
 use core::convert::TryInto;
@@ -6,7 +8,7 @@ use core::alloc::{GlobalAlloc, Layout};
 use lock_cell::LockCell;
 use page_tables::{PhysAddr, PhysMem};
 
-pub struct PhysicalMemory(RangeSet);
+pub struct PhysicalMemory(pub RangeSet);
 
 impl PhysMem for PhysicalMemory {
     unsafe fn translate_phys(&mut self, phys_addr: PhysAddr, size: usize) -> Option<*mut u8> {
@@ -177,6 +179,7 @@ pub fn init(bootloader_size: u32) {
         end: 0x7c00 + (bootloader_size - 1)
     });
 
+    serial::println!("Initial memory map: ");
     serial::println!("{:#x?}", available_memory.ranges());
 
     // Store the initialized physical memory RangeSet

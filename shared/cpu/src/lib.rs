@@ -45,12 +45,21 @@ pub unsafe fn get_cr3() -> usize {
     cr3
 }
 
+/// Loads the IDTR with the table descriptor at `table_descriptor_addr`
+#[inline]
+pub unsafe fn load_idt(table_descriptor_addr: usize) {
+    asm!("lidt [{}]", in(reg) table_descriptor_addr, options(nomem, preserves_flags, nostack));
+}
+
 /// Disables interrupts and halts the cpu
+#[inline]
 pub fn halt() -> ! {
-    unsafe {
-        asm!("
-            cli
-            hlt
-        ", options(noreturn, nostack));
+    loop {
+        unsafe {
+            asm!("
+                cli
+                hlt
+            ", options(nomem, nostack));
+        }
     }
 }

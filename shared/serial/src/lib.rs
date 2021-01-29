@@ -4,40 +4,52 @@
 
 use lock_cell::LockCell;
 
+/// Global state for serial ports.
+/// FIXME: This uses a spin-lock which doesn't disable interrupts. If we use this in interrupt this
+/// could cause deadlocks.
+pub static SERIAL: LockCell<Option<SerialPort>> = LockCell::new(None);
+
 /// A collection of 4 serial ports. These are the 4 serial ports identified by the BIOS, i.e. these
 /// are COM1-COM4 in the BDA.
-struct SerialPort {
+#[derive(Clone, Copy)]
+pub struct SerialPort {
     ports: [Option<u16>; 4]
 }
 
-// Global state for serial ports.
-// FIXME: This uses a spin-lock which doesn't disable interrupts. If we want to use this in
-// interrupts we must switch to different lock or we could dead-lock.
-static SERIAL: LockCell<SerialPort> = LockCell::new(SerialPort {
-    ports: [None; 4]
-});
-
-/// Initializes all available serial port with 115200 baud, 8n1.
+/// Initializes all available serial ports with 115200 baud, 8n1.
 pub fn init() {
     let mut serial = SERIAL.lock();
+    assert!(serial.is_none());
+    *serial = unsafe { Some(SerialPort::new()) };
+}
 
-    // Initially mark all ports as not present
-    serial.ports = [None; 4];
+pub fn init_with_ports(serial_port: SerialPort) {
+    let mut serial = SERIAL.lock();
+    assert!(serial.is_none());
+    *serial = Some(serial_port);
+}
 
-    for com_id in 0..4 {
-        // Get the COM IO port address from the BIOS data area (BDA)
-        let com_port = unsafe {
-            *(0x400 as *const u16).offset(com_id)
-        };
+impl SerialPort {
+    /// Initializes all available serial ports with 115200 baud, 8n1.
+    /// This function is unsafe because it relies on two unverified assumptions: that this function
+    /// is only called once, and that address 0x400 is identity mapped such that the BDA can be
+    /// accessed
+    unsafe fn new() -> Self {
+        // Initially mark all ports as not present
+        let mut ports = [None; 4];
 
-        // If the COM port is not present (zero), check the next one
-        if com_port == 0 {
-            continue;
-        }
+        for com_id in 0..4 {
+            // Get the COM IO port address from the BIOS data area (BDA)
+            let com_port = *(0x400 as *const u16).offset(com_id);
+    
+            // If the COM port is not present (zero), check the next one
+            if com_port == 0 {
+                continue;
+            }
+    
+            // Serial port initialization sequence
 
-        // Serial port initialization sequence
-        unsafe {
-            // Disable all interrupts
+            // Disable all serial interrupts
             cpu::out8(com_port + 1, 0x0);
 
             // Enable DLAB to set baud rate divisor
@@ -57,41 +69,47 @@ pub fn init() {
 
             // Set DTR/RTS (Data Terminal Ready, Request to Send)
             cpu::out8(com_port + 4, 0x3);
+    
+            // Store the port address
+            ports[com_id as usize] = Some(com_port);
         }
 
-        // Store the port address
-        serial.ports[com_id as usize] = Some(com_port);
+        SerialPort { ports }
     }
-}
 
-/// Writes `message` to all present serial ports. This function blocks until it can write all bytes.
-pub fn write(message: &str) {
-    let serial = SERIAL.lock();
-
-    for byte in message.bytes() {
-        // Check for every port if it is present
-        for port in &serial.ports {
-            if let Some(com_port) = *port {
-                unsafe { write_byte(com_port, byte); }
+    /// Writes `message` to all present serial ports. This function blocks until it can write all bytes.
+    pub fn write(&mut self, message: &str) {
+        // Broadcast each byte to all present ports
+        for byte in message.bytes() {
+            for port in 0..self.ports.len() {
+                // For every port, check if it is present
+                if let Some(com_port) = self.ports[port] {
+                    // If the port is present, write the byte to the port
+                    unsafe { self.write_byte(com_port, byte); }
+                }
             }
         }
     }
-}
 
-/// Writes `byte` to `com_port`. This is only used internally and assumes the serial lock is held.
-unsafe fn write_byte(com_port: u16, byte: u8) {
-    // Some serial consoles expect a CRLF to move to the start of the next line, so if we encounter
-    // a LF we can just prepend a CR.
-    if byte == b'\n' {
-        write_byte(com_port, b'\r');
+    /// Writes `byte` to `com_port`. This is only used internally and assumes the serial lock is held.
+    unsafe fn write_byte(&mut self, com_port: u16, byte: u8) {
+        // Altough the mutability of the self reference is not required, this ensures that the ports
+        // aren't written to from multiple threads at once
+
+        // Some serial consoles expect a CRLF to move to the start of the next line, so if we encounter
+        // a LF we can just prepend a CR.
+        if byte == b'\n' {
+            self.write_byte(com_port, b'\r');
+        }
+    
+        // Wait until we can transmit
+        while cpu::in8(com_port + 5) & 0x20 == 0 {
+            core::hint::spin_loop();
+        }
+        // Write the character to the serial port
+        cpu::out8(com_port, byte);
     }
 
-    // Wait until we can transmit
-    while cpu::in8(com_port + 5) & 0x20 == 0 {
-        core::hint::spin_loop();
-    }
-    // Write the character to the serial port
-    cpu::out8(com_port, byte);
 }
 
 /// Dummy struct to implement `core::fmt::Write` on
@@ -99,7 +117,13 @@ pub struct SerialWriter;
 
 impl core::fmt::Write for SerialWriter {
     fn write_str(&mut self, msg: &str) -> core::fmt::Result {
-        write(msg);
+		// Grab serial lock
+		let mut serial = SERIAL.lock();
+		if serial.is_some() {
+			// If serial is initialized, write the message
+			serial.as_mut().unwrap().write(msg);
+		}
+		
         Ok(())
     }
 }
