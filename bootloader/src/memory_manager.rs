@@ -6,12 +6,13 @@ use core::convert::TryInto;
 use range_set::{RangeSet, InclusiveRange};
 use core::alloc::{GlobalAlloc, Layout};
 use lock_cell::LockCell;
-use page_tables::{PhysAddr, PhysMem};
+use page_tables::{PageDirectory, PhysAddr, PhysMem};
 
 pub struct PhysicalMemory(pub RangeSet);
 
 impl PhysMem for PhysicalMemory {
-    unsafe fn translate_phys(&mut self, phys_addr: PhysAddr, size: usize) -> Option<*mut u8> {
+    unsafe fn translate_phys(&mut self, _: Option<&mut PageDirectory>, phys_addr: PhysAddr,
+        size: usize) -> Option<*mut u8> {
         // No meaning for a ptr to be valid for 0 bytes
         if size == 0 {
             return None;
@@ -31,6 +32,13 @@ impl PhysMem for PhysicalMemory {
         let addr = self.0.allocate(layout.size().try_into().ok()?, layout.align().try_into().ok()?);
 
         addr.map(|x| PhysAddr(x))
+    }
+
+    fn release_phys_mem(&mut self, phys_addr: PhysAddr, layout: Layout) {
+        self.0.remove(InclusiveRange {
+            start: phys_addr.0,
+            end: phys_addr.0 + (layout.size() - 1) as u32
+        });
     }
 }
 

@@ -5,13 +5,13 @@
 
 use core::convert::TryInto;
 
-pub const ELF_TYPE_ET_EXEC: u16 = 2;
-pub const ELF_MACHINE_X86: u16 = 3;
-pub const SEGMENT_TYPE_PT_LOAD: u32 = 1;
-pub const SEGMENT_FLAGS_PF_X: u32 = 1;
-pub const SEGMENT_FLAGS_PF_W: u32 = 2;
-pub const SEGMENT_FLAGS_PF_R: u32 = 4;
-pub const ELF_PROGRAM_HEADER_32_SIZE: usize = 0x20;
+const ELF_TYPE_ET_EXEC: u16 = 2;
+const ELF_MACHINE_X86: u16 = 3;
+const SEGMENT_TYPE_PT_LOAD: u32 = 1;
+const SEGMENT_FLAGS_PF_X: u32 = 1;
+const SEGMENT_FLAGS_PF_W: u32 = 2;
+const SEGMENT_FLAGS_PF_R: u32 = 4;
+const ELF_PROGRAM_HEADER_32_SIZE: usize = 0x20;
 
 /// A validated ELF file
 pub struct ElfParser<'a> {
@@ -90,9 +90,10 @@ impl<'a> ElfParser<'a> {
     }
 
     /// Invokes the provided closure with the details of every LOAD segment in the ELF
-    /// The arguments are (virtual address, virtual size, raw init bytes, segment flags)
+    /// The closure arguments are
+    /// (virtual address, virtual size, raw init bytes, segment flags, read, write, exec)
     pub fn for_segment<F>(&self, mut func: F) -> Option<()>
-        where F: FnMut(usize, usize, &[u8], u32) -> Option<()> {
+        where F: FnMut(usize, usize, &[u8], bool, bool, bool) -> Option<()> {
         let bytes = self.raw_bytes;
 
         for segment_idx in 0..self.segment_count {
@@ -122,8 +123,13 @@ impl<'a> ElfParser<'a> {
             // Get the segment flags (R/W/X)
             let seg_flags = u32::from_le_bytes(bytes[off+24..off+28].try_into().ok()?);
 
+            // Turn the flags into boolean values
+            let read = (seg_flags & SEGMENT_FLAGS_PF_R) != 0;
+            let write = (seg_flags & SEGMENT_FLAGS_PF_W) != 0;
+            let exec = (seg_flags & SEGMENT_FLAGS_PF_X) != 0;
+            
             func(seg_vaddr, seg_mem_size,
-                &bytes[seg_file_offset..seg_file_offset+seg_file_bytes_size], seg_flags)?;
+                &bytes[seg_file_offset..seg_file_offset+seg_file_bytes_size], read, write, exec)?;
         }
 
         Some(())

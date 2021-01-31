@@ -5,12 +5,22 @@
 
 use range_set::RangeSet;
 use serial::SerialPort;
+use page_tables::PhysAddr;
+
+/// The virtual address where the page directory is mapped
+pub const PAGE_DIRECTORY_VADDR: u32 = 0xFFFFD000;
+/// The virtual address where the page table containing the last page is mapped
+pub const LAST_PAGE_TABLE_VADDR: u32 = 0xFFFFE000;
 
 /// A structure to hold data the bootloader wants to pass to the kernel
+#[derive(Clone, Copy)]
 #[repr(C)]
 pub struct BootArgs {
     /// All memory ranges which are avaiable for use
     pub free_memory: RangeSet,
-    // The serial ports available for use
-    pub serial_port: SerialPort
+    /// The serial ports available for use
+    pub serial_port: SerialPort,
+    /// The physical address of the page table containing the last page. The kernel needs this
+    /// information to access physical memory
+    pub last_page_table_paddr: PhysAddr,
 }

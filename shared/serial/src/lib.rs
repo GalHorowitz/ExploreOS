@@ -12,6 +12,7 @@ pub static SERIAL: LockCell<Option<SerialPort>> = LockCell::new(None);
 /// A collection of 4 serial ports. These are the 4 serial ports identified by the BIOS, i.e. these
 /// are COM1-COM4 in the BDA.
 #[derive(Clone, Copy)]
+#[repr(C)]
 pub struct SerialPort {
     ports: [Option<u16>; 4]
 }

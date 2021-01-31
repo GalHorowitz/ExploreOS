@@ -20,7 +20,7 @@ fn flatten_elf<P: AsRef<Path>>(file_path: P) -> Option<(usize, usize, Vec<u8>)> 
 
     let mut program_start = None;
     let mut program_end = None; // Inclusive
-    parser.for_segment(|vaddr, size, _init_bytes, _flags| {
+    parser.for_segment(|vaddr, size, _init_bytes, _r, _w, _x| {
         // Calculate the end of the segment. We sub before we add to prevent an overflow for a
         // segment that includes the last address.
         let segment_end = vaddr.checked_add(size.checked_sub(1)?)?;
@@ -49,7 +49,7 @@ fn flatten_elf<P: AsRef<Path>>(file_path: P) -> Option<(usize, usize, Vec<u8>)> 
     let mut flattened = vec![0u8; program_size];
 
     // Copy the segment into the flattened image
-    parser.for_segment(|vaddr, size, init_bytes, _flags| {
+    parser.for_segment(|vaddr, size, init_bytes, _r, _w, _x| {
         // The segment's offset into the flat image
         let flat_offset = vaddr - program_start;
         // We might not need to initialize the entire segment (e.g. bss segment)

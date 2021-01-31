@@ -4,6 +4,7 @@
 name = "boot_args"
 version = "0.1.0"
 dependencies = [
+ "page_tables",
  "range_set",
  "serial",
 ]

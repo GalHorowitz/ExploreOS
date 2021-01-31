@@ -2,3 +2,4 @@
 /bootloader/target
 /kernel/target
 /build
+*.code-workspace

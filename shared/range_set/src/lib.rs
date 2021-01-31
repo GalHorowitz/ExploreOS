@@ -6,14 +6,15 @@
 const MAX_NUM_RANGES: usize = 32;
 
 /// Describes an inclusive range of addresses, i.e. all addresses such that start <= addr <= end
-#[repr(C)]
 #[derive(Copy, Clone, Debug)]
+#[repr(C)]
 pub struct InclusiveRange {
     pub start: u32,
     pub end: u32
 }
 
 /// A set of non-overlaping and non-contiguous inclusive ranges
+#[derive(Copy, Clone)]
 #[repr(C)]
 pub struct RangeSet {
     /// An array of ranges in the set
