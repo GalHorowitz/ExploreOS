@@ -17,7 +17,8 @@ use core::convert::TryInto;
 use serial::println;
 use elf_parser::ElfParser;
 use page_tables::{PageDirectory, VirtAddr, PhysAddr};
-use boot_args::{BootArgs, PAGE_DIRECTORY_VADDR, LAST_PAGE_TABLE_VADDR};
+use boot_args::{BootArgs, KERNEL_STACK_SIZE, KERNEL_STACK_BASE_VADDR, PAGE_DIRECTORY_VADDR,
+    LAST_PAGE_TABLE_VADDR, KERNEL_ALLOCATIONS_BASE_VADDR};
 
 /// Rust bootloader entry point
 #[no_mangle]
@@ -101,17 +102,19 @@ fn setup_kernel(boot_disk_id: u8, bootloader_size: u32) -> (u32, u32, u32, PhysA
         let x = if exec { 'X' } else { '_' };
         println!("Mapping kernel segment {:#09x} {:#09x} [{}{}{}]", vaddr, size, r, w, x);
 
+        // The kernel cannot extend beyond 0xC4000000 because that is where we place our kernel
+        // allocs. TODO: Move this check out to a better place
+        assert!(vaddr + (size - 1) < KERNEL_ALLOCATIONS_BASE_VADDR as usize);
+
         // Create a virtual mapping for the kernel segment
-        unsafe {
-            directory.map_init(phys_mem, VirtAddr(vaddr.try_into().ok()?), size.try_into().ok()?,
-                write, false, |offset| {
-                if offset < init_bytes.len() {
-                    init_bytes[offset]
-                } else {
-                    0u8
-                }
-            })?;
-        }
+        directory.map_init(phys_mem, VirtAddr(vaddr.try_into().ok()?), size.try_into().ok()?,
+            write, false, |offset| {
+            if offset < init_bytes.len() {
+                init_bytes[offset]
+            } else {
+                0u8
+            }
+        })?;
 
         Some(())
     }).expect("Failed to load and map kernel");
@@ -120,12 +123,8 @@ fn setup_kernel(boot_disk_id: u8, bootloader_size: u32) -> (u32, u32, u32, PhysA
         .expect("Kernel entry is outside of 32-bit address range");
 
     // Map the kernel stack
-    const KERNEL_STACK_SIZE: u32 = 0x2000;
-    const KERNEL_STACK_ADDR: u32 = 0xc0000000;
-    unsafe {
-        directory.map(phys_mem, VirtAddr(KERNEL_STACK_ADDR - KERNEL_STACK_SIZE), KERNEL_STACK_SIZE,
-            true, false).expect("Failed to map kernel stack");
-    }
+    directory.map(phys_mem, VirtAddr(KERNEL_STACK_BASE_VADDR), KERNEL_STACK_SIZE, true, false)
+        .expect("Failed to map kernel stack");
 
     // Temp identity map of the first 1MiB so we can continue executing after changing cr3
     for paddr in (0..(1024*1024)).step_by(4096) {
@@ -133,7 +132,7 @@ fn setup_kernel(boot_disk_id: u8, bootloader_size: u32) -> (u32, u32, u32, PhysA
             paddr | page_tables::PAGE_ENTRY_PRESENT | page_tables::PAGE_ENTRY_WRITE;
 
         unsafe {
-            directory.map_raw(phys_mem, VirtAddr(paddr), raw_table_entry, false)
+            directory.map_raw(phys_mem, VirtAddr(paddr), raw_table_entry, false, true)
                 .expect("Failed to identity map");
         }
     }
@@ -148,12 +147,12 @@ fn setup_kernel(boot_disk_id: u8, bootloader_size: u32) -> (u32, u32, u32, PhysA
     let table_paddr = unsafe {
         let raw_table_entry =
             new_cr3 | page_tables::PAGE_ENTRY_PRESENT | page_tables::PAGE_ENTRY_WRITE;
-        let table_paddr = directory.map_raw(phys_mem, VirtAddr(PAGE_DIRECTORY_VADDR), raw_table_entry, false)
-            .expect("Failed to map page directory");
+        let table_paddr = directory.map_raw(phys_mem, VirtAddr(PAGE_DIRECTORY_VADDR),
+            raw_table_entry, false, true).expect("Failed to map page directory");
 
         let raw_table_entry =
             table_paddr.0 | page_tables::PAGE_ENTRY_PRESENT | page_tables::PAGE_ENTRY_WRITE;
-        directory.map_raw(phys_mem, VirtAddr(LAST_PAGE_TABLE_VADDR), raw_table_entry, false)
+        directory.map_raw(phys_mem, VirtAddr(LAST_PAGE_TABLE_VADDR), raw_table_entry, false, true)
             .expect("Failed to map page directory");
 
         table_paddr
@@ -161,5 +160,5 @@ fn setup_kernel(boot_disk_id: u8, bootloader_size: u32) -> (u32, u32, u32, PhysA
     
     println!("Kernel entry at {:#x}, Page directory at {:#x}", kernel_entry, new_cr3);
 
-    (kernel_entry, KERNEL_STACK_ADDR, new_cr3, table_paddr)
+    (kernel_entry, KERNEL_STACK_BASE_VADDR + KERNEL_STACK_SIZE, new_cr3, table_paddr)
 }

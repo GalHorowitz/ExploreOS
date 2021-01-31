@@ -1,11 +1,21 @@
-use core::convert::TryInto;
+use core::{convert::TryInto, sync::atomic::{AtomicUsize, Ordering}};
 use core::alloc::{GlobalAlloc, Layout};
 
-use boot_args::{BootArgs, PAGE_DIRECTORY_VADDR, LAST_PAGE_TABLE_VADDR};
-use cpu::halt;
 use range_set::{RangeSet, InclusiveRange};
 use page_tables::{PageDirectory, PhysMem, PhysAddr, VirtAddr};
 use lock_cell::LockCell;
+use boot_args::{BootArgs, PAGE_DIRECTORY_VADDR, LAST_PAGE_TABLE_VADDR,
+    KERNEL_ALLOCATIONS_BASE_VADDR};
+
+/// Global to hold the `RangeSet` of available physical memory
+pub static PHYS_MEM: LockCell<Option<PhysicalMemory>> = LockCell::new(None);
+/// Global to hold the `PageDirectory` which manages pages
+pub static PAGES: LockCell<Option<PageDirectory>> = LockCell::new(None);
+// FIXME: When accessing pages we almost always need access to physical memory too, and currently
+// I make sure to always grab the lock on physical memory first, but this is error-prone and if one
+// thread grabs the PAGES lock first and another grabs the PHYS_MEM lock first we could dead-lock
+
+static NEXT_AVAILABLE_VADDR: AtomicUsize = AtomicUsize::new(KERNEL_ALLOCATIONS_BASE_VADDR as usize);
 
 pub struct PhysicalMemory{
     memory_ranges: RangeSet,
@@ -73,7 +83,7 @@ impl PhysMem for PhysicalMemory {
         // Make the mapping of the last virtual page (0xFFFFF000-0xFFFFFFFF) to the physical page
         let raw_table_entry =
             phys_addr_page | page_tables::PAGE_ENTRY_PRESENT | page_tables::PAGE_ENTRY_WRITE;
-        page_dir.map_raw(self, VirtAddr(0xFFFFF000), raw_table_entry, true)?;
+        page_dir.map_raw(self, VirtAddr(0xFFFFF000), raw_table_entry, true, true)?;
 
         // Calculate the virtual address based on the offset from the start of the page
         let virt_addr = 0xFFFFF000 + (phys_addr.0 - phys_addr_page);
@@ -95,11 +105,6 @@ impl PhysMem for PhysicalMemory {
     }
 }
 
-/// Global to hold the `RangeSet` of available physical memory
-pub static PHYS_MEM: LockCell<Option<PhysicalMemory>> = LockCell::new(None);
-/// Global to hold the `PageDirectory` which manages pages
-pub static PAGES: LockCell<Option<PageDirectory>> = LockCell::new(None);
-
 /// The global allocator for the bootloader
 #[global_allocator]
 static GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator;
@@ -107,48 +112,73 @@ static GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator;
 /// Dummy struct to implement `GlobalAlloc` on
 struct GlobalAllocator;
 
-unsafe impl GlobalAlloc for GlobalAllocator {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-		// The `RangeSet` allocator only supports 32-bit
-		if layout.size() > core::u32::MAX as usize || layout.align() > core::u32::MAX as usize {
-			return core::ptr::null_mut()
-		}
+impl GlobalAllocator {
+    unsafe fn alloc_internal(&self, layout: Layout) -> Option<*mut u8> {
+        // The `RangeSet` allocator only supports 32-bit
+        let size: u32 = layout.size().try_into().ok()?;
+        let _align: u32 = layout.align().try_into().ok()?;
 
-		// We can now safely convert
-		let size = layout.size() as u32;
-		let align = layout.align() as u32;
+        // We currently just rely on the fact that we allocate pages which are page-aligned, so any
+        // request with alignment larger than 4096 can not actually be fulfilled.
+        assert!(layout.align() <= 4096);
 
-        // Check that the physical memory manager was initialized
+        // Round up the size to the next multiple of a page
+        let aligned_size = (size.checked_add(4095)?) & !0xFFF;
+        // Grab a virtual address for this allocation
+        let virt_addr = NEXT_AVAILABLE_VADDR.fetch_add(aligned_size as usize, Ordering::SeqCst);
+
+        // Get access to physical memory
         let mut pmem = PHYS_MEM.lock();
-        if pmem.is_none() {
-            return core::ptr::null_mut();
-        }
-        
-		// Allocate physical memory from the `RangeSet`
-    	if let Some(addr) = pmem.as_mut().unwrap().memory_ranges.allocate(size, align) {
-            addr as *mut u8
-		} else {
-			core::ptr::null_mut()
-		}
+        let phys_mem = pmem.as_mut()?;
+
+        // Get access to the page directory
+        let mut pages = PAGES.lock();
+        let page_dir = pages.as_mut()?;
+
+        // Map the memory for the allocation
+        page_dir.map(phys_mem, VirtAddr(virt_addr as u32), aligned_size as u32, true, false)?;
+
+        Some(virt_addr as *mut u8)
     }
 
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        let mut pmem = PHYS_MEM.lock();
-
+    fn dealloc_internal(&self, ptr: *mut u8, layout: Layout) -> Option<()> {
         if layout.size() == 0 {
             panic!("Attempt to dealloc a zero sized allocation");
         }
 
-        // Check the memory manager is initialized
-        if let Some(free_mem) = pmem.as_mut() {
-            // Insert the range back into the set as free memory
-            free_mem.memory_ranges.insert(InclusiveRange {
-                start: ptr as u32,
-                end: ptr as u32 + (layout.size() as u32 - 1)
-            });
-        } else {
-            panic!("Attempt to dealloc before memory manager was initialized");
+        // Get access to physical memory
+        let mut pmem = PHYS_MEM.lock();
+        let phys_mem = pmem.as_mut()?;
+
+        // Get access to the page directory
+        let mut pages = PAGES.lock();
+        let page_dir = pages.as_mut()?;
+
+        // Calculate the first and last virtual address so we can iterate over the pages
+        let start_vaddr = ptr as u32;
+        let last_vaddr = (ptr as u32).checked_add(layout.size() as u32 - 1)?;
+
+        // Our allocator always gives page aligned virtual addressed, so we can rely on this
+        // assumption, but we assert for future-proofing
+        assert!(start_vaddr & 0xFFF == 0);
+
+        for vaddr in (start_vaddr..last_vaddr).step_by(4096) {
+            // Go through each page in the allocation and unmap it (while freeing the backing
+            // physical page)
+            page_dir.unmap(phys_mem, VirtAddr(vaddr), true);
         }
+
+        Some(())
+    }
+}
+
+unsafe impl GlobalAlloc for GlobalAllocator {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+		self.alloc_internal(layout).unwrap_or(core::ptr::null_mut())
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        self.dealloc_internal(ptr, layout);
     }
 }
 
@@ -174,11 +204,7 @@ pub fn init(boot_args: &BootArgs) {
     
     // Unmap the temp identity map of the first physical 1MiB
     for paddr in (0..(1024*1024)).step_by(4096) {
-        // TODO: Make a dedicated unmapping procedure which releases empty page tables
-        unsafe {
-            page_directory.map_raw(&mut phys_mem, VirtAddr(paddr), 0, true)
-            .expect("Failed to unmap identity map");
-        }
+        page_directory.unmap(&mut phys_mem, VirtAddr(paddr), false);
     }
     
     *pmem = Some(phys_mem);

@@ -7,6 +7,14 @@ use range_set::RangeSet;
 use serial::SerialPort;
 use page_tables::PhysAddr;
 
+/// The size in bytes of the kernel stack
+pub const KERNEL_STACK_SIZE: u32 = 0x2000;
+/// The virtual address of the base of the kernel stack
+pub const KERNEL_STACK_BASE_VADDR: u32 = 0xc0000000 - KERNEL_STACK_SIZE;
+
+/// The virtual address of the base of kernel virtual allocations
+pub const KERNEL_ALLOCATIONS_BASE_VADDR: u32 = 0xC4000000;
+
 /// The virtual address where the page directory is mapped
 pub const PAGE_DIRECTORY_VADDR: u32 = 0xFFFFD000;
 /// The virtual address where the page table containing the last page is mapped
