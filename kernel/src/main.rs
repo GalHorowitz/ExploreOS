@@ -1,11 +1,11 @@
 //! Kernel entry point
 
-#![feature(panic_info_message, default_alloc_error_handler)]
+#![feature(panic_info_message, default_alloc_error_handler, naked_functions, asm)]
 #![no_std]
 #![no_main]
 
 extern crate compiler_reqs;
-#[macro_use] extern crate alloc;
+extern crate alloc;
 
 use boot_args::BootArgs;
 use page_tables::VirtAddr;
@@ -13,6 +13,8 @@ use serial::println;
 
 mod panic;
 mod memory_manager;
+mod gdt;
+mod interrupts;
 
 /// Entry point of the kernel. `boot_args_ptr` is a a physical address below 1MiB which points to a
 /// `BootArgs` structure.
@@ -31,14 +33,21 @@ pub extern fn entry(boot_args_ptr: *const BootArgs) -> ! {
 
     // Initializes the memory manager, which also unmaps the temp identity map
     memory_manager::init(&boot_args);
-    
-    let a = vec![0x41u8; 20];
-    println!("{:#X?} -> {:?}", a.as_ptr(), a);
-    let b = vec![0x43u8; 20];
-    println!("{:#X?} -> {:?}", b.as_ptr(), b);
-    drop(b);
-    let c = vec![0x45u8; 20];
-    println!("{:#X?} -> {:?}", c.as_ptr(), c);
+
+    gdt::init();
+
+    interrupts::init();
+    println!("Enabled interrupts");
+
+    unsafe {
+        asm!("int 0x67");
+    }
+
+    let start = cpu::rdtsc();
+    let mut vec: alloc::vec::Vec<u8> = alloc::vec::Vec::with_capacity(512 * 1024 * 1024);
+    vec.push(4u8);
+    let elapsed = cpu::rdtsc() - start;
+    println!("Took {} cycles to allocate {} bytes", elapsed, vec.capacity());
 
     let mut pmem = memory_manager::PHYS_MEM.lock();
     let phys_mem = pmem.as_mut().unwrap();

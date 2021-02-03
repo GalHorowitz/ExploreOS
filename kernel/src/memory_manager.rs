@@ -93,14 +93,18 @@ impl PhysMem for PhysicalMemory {
     fn allocate_phys_mem(&mut self, layout: Layout) -> Option<PhysAddr> {
         let addr = self.memory_ranges.allocate(layout.size().try_into().ok()?,
             layout.align().try_into().ok()?);
-
+        
         addr.map(|x| PhysAddr(x))
     }
 
-    fn release_phys_mem(&mut self, phys_addr: PhysAddr, layout: Layout) {
-        self.memory_ranges.remove(InclusiveRange {
+    fn release_phys_mem(&mut self, phys_addr: PhysAddr, size: usize) {
+        if size == 0 {
+            return;
+        }
+
+        self.memory_ranges.insert(InclusiveRange {
             start: phys_addr.0,
-            end: phys_addr.0 + (layout.size() - 1) as u32
+            end: phys_addr.0.saturating_add((size - 1) as u32)
         });
     }
 }
@@ -165,7 +169,7 @@ impl GlobalAllocator {
         for vaddr in (start_vaddr..last_vaddr).step_by(4096) {
             // Go through each page in the allocation and unmap it (while freeing the backing
             // physical page)
-            page_dir.unmap(phys_mem, VirtAddr(vaddr), true);
+            page_dir.unmap(phys_mem, VirtAddr(vaddr), true)?;
         }
 
         Some(())
@@ -174,11 +178,11 @@ impl GlobalAllocator {
 
 unsafe impl GlobalAlloc for GlobalAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-		self.alloc_internal(layout).unwrap_or(core::ptr::null_mut())
+        self.alloc_internal(layout).unwrap_or(core::ptr::null_mut())
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        self.dealloc_internal(ptr, layout);
+        assert!(self.dealloc_internal(ptr, layout).is_some());
     }
 }
 
@@ -189,7 +193,7 @@ pub fn init(boot_args: &BootArgs) {
     let mut pages = PAGES.lock();
 
     // Get the CR3 set by the bootloader which is the base address of the page directory
-    let cr3 = unsafe { cpu::get_cr3() as u32 };
+    let cr3 = cpu::get_cr3() as u32;
 
     // Setup the physical memory based on the boot args
     let mut phys_mem = PhysicalMemory{

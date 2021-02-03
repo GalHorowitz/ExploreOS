@@ -9,11 +9,11 @@ pub const PAGE_ENTRY_WRITE: u32     = 1<<1;
 pub const PAGE_ENTRY_USER: u32      = 1<<2;
 
 /// Strongly typed physical address to diffreniate addresses
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PhysAddr(pub u32);
 
 /// Strongly typed virtual address to diffreniate addresses
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct VirtAddr(pub u32);
 
 pub trait PhysMem {
@@ -29,7 +29,7 @@ pub trait PhysMem {
     fn allocate_phys_mem(&mut self, layout: Layout) -> Option<PhysAddr>;
 
     /// Releases physical memory allocated with `allocate_phys_mem`
-    fn release_phys_mem(&mut self, phys_addr: PhysAddr, layout: Layout);
+    fn release_phys_mem(&mut self, phys_addr: PhysAddr, size: usize);
 
     /// Same as `allocate_phys_mem` except the memory is also zeroed. A reference to `page_dir` is
     /// required if the zero-ing of memory would require to map the memory in.
@@ -43,7 +43,7 @@ pub trait PhysMem {
             let virt_addr = self.translate_phys(page_dir, phys_addr, layout.size()).or_else(|| {
                 // Translation of the address failed and so we can not zero the memory, but before
                 // we exit with failure, we need to release the physical memory we allocated
-                self.release_phys_mem(phys_addr, layout);
+                self.release_phys_mem(phys_addr, layout.size());
                 
                 None
             })?;
@@ -245,7 +245,7 @@ impl PageDirectory {
             // Get the physical address of the page
             let page_paddr = self.translate_virt(phys_mem, virt_addr)?;
             // Release the page
-            phys_mem.release_phys_mem(page_paddr, Layout::from_size_align(4096, 4096).ok()?);
+            phys_mem.release_phys_mem(page_paddr, 4096);
         }
         
         unsafe {
@@ -288,7 +288,7 @@ impl PageDirectory {
         }
 
         // If we exited the loop every page table entry is not present, so this table can be freed
-        phys_mem.release_phys_mem(PhysAddr(table_paddr), Layout::from_size_align(4096, 4096).ok()?);
+        phys_mem.release_phys_mem(PhysAddr(table_paddr), 4096);
         
         // We also need to mark the PDE as not present
         unsafe {
@@ -306,11 +306,6 @@ impl PageDirectory {
     /// the page tables.
     pub fn translate_virt(&mut self, phys_mem: &mut impl PhysMem, virt_addr: VirtAddr)
         -> Option<PhysAddr> {
-        // Make sure that the requested virtual address is aligned to a page
-        if (virt_addr.0 & 0xfff) != 0 {
-            return None;
-        }
-
         // Index of the entry in the page directory
         let directory_index = virt_addr.0 >> 22;
         // Index of the entry in the page table
@@ -341,8 +336,11 @@ impl PageDirectory {
         };
 
         // Check if the PTE is present (i.e. the page is already mapped)
-        if (table_entry & PAGE_ENTRY_PRESENT) == 0 {
-            Some(PhysAddr(table_entry & !0xFFF))
+        if (table_entry & PAGE_ENTRY_PRESENT) != 0 {
+            // Calculate the physical address by adding the page address from the PTE and the page
+            // offset from the virtual address
+            let paddr = (table_entry & !0xFFF) + (virt_addr.0 & 0xFFF);
+            Some(PhysAddr(paddr))
         } else {
             None
         }

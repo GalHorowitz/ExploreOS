@@ -34,10 +34,14 @@ impl PhysMem for PhysicalMemory {
         addr.map(|x| PhysAddr(x))
     }
 
-    fn release_phys_mem(&mut self, phys_addr: PhysAddr, layout: Layout) {
-        self.0.remove(InclusiveRange {
+    fn release_phys_mem(&mut self, phys_addr: PhysAddr, size: usize) {
+        if size == 0 {
+            return;
+        }
+
+        self.0.insert(InclusiveRange {
             start: phys_addr.0,
-            end: phys_addr.0 + (layout.size() - 1) as u32
+            end: phys_addr.0.saturating_add((size - 1) as u32)
         });
     }
 }
