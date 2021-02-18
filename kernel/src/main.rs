@@ -8,13 +8,15 @@ extern crate compiler_reqs;
 extern crate alloc;
 
 use boot_args::BootArgs;
-use page_tables::VirtAddr;
 use serial::println;
 
 mod panic;
 mod memory_manager;
 mod gdt;
 mod interrupts;
+mod screen;
+mod keyboard;
+mod ps2;
 
 /// Entry point of the kernel. `boot_args_ptr` is a a physical address below 1MiB which points to a
 /// `BootArgs` structure.
@@ -34,33 +36,27 @@ pub extern fn entry(boot_args_ptr: *const BootArgs) -> ! {
     // Initializes the memory manager, which also unmaps the temp identity map
     memory_manager::init(&boot_args);
 
+    println!("Initialized memory manager");
+
+    screen::init();
+    screen::print("Hello from the kernel!\n");
+    screen::print_with_attributes("\t\t\tZoop :)\n", 0x04);
+
     gdt::init();
 
     interrupts::init();
     println!("Enabled interrupts");
+    ps2::controller::init();
 
-    unsafe {
-        asm!("int 0x67");
-    }
+    // unsafe {
+    //     asm!("int 0x67");
+    // }
 
-    let start = cpu::rdtsc();
+    let start = cpu::serializing_rdtsc();
     let mut vec: alloc::vec::Vec<u8> = alloc::vec::Vec::with_capacity(512 * 1024 * 1024);
     vec.push(4u8);
-    let elapsed = cpu::rdtsc() - start;
+    let elapsed = cpu::serializing_rdtsc() - start;
     println!("Took {} cycles to allocate {} bytes", elapsed, vec.capacity());
 
-    let mut pmem = memory_manager::PHYS_MEM.lock();
-    let phys_mem = pmem.as_mut().unwrap();
-    let mut page_dir = memory_manager::PAGES.lock();
-    let raw_table_entry = 0xb8000 | page_tables::PAGE_ENTRY_PRESENT | page_tables::PAGE_ENTRY_WRITE;
-    unsafe { 
-        page_dir.as_mut().unwrap().map_raw(phys_mem, VirtAddr(0xEEEE0000), raw_table_entry, false,
-            true).expect("FAILED SCREEN MAP");
-    }
-    let screen = unsafe {
-        core::slice::from_raw_parts_mut(0xEEEE0000 as *mut u16, 80*25)
-    };
-    screen.iter_mut().for_each(|x| *x = 0x0f38);
-    
-    cpu::halt();
+    cpu::halt_and_service_interrupts();
 }

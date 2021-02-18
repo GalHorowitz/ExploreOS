@@ -18,12 +18,17 @@ name = "cpu"
 version = "0.1.0"
 
 [[package]]
+name = "exclusive_cell"
+version = "0.1.0"
+
+[[package]]
 name = "kernel"
 version = "0.1.0"
 dependencies = [
  "boot_args",
  "compiler_reqs",
  "cpu",
+ "exclusive_cell",
  "lock_cell",
  "page_tables",
  "range_set",
@@ -33,6 +38,9 @@ dependencies = [
 [[package]]
 name = "lock_cell"
 version = "0.1.0"
+dependencies = [
+ "cpu",
+]
 
 [[package]]
 name = "page_tables"

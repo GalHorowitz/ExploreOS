@@ -55,6 +55,7 @@ impl RangeSet {
 
     /// Inserts `range` to the range set, merging ranges as necessary
     pub fn insert(&mut self, mut range: InclusiveRange) {
+        // Assert this is a valid range
         assert!(range.start <= range.end);
 
         // We go in a loop and keep trying to find an existing range to merge with. We must do this
@@ -94,6 +95,7 @@ impl RangeSet {
 
     /// Removes `range` from the range set, trimming, splitting and deleting ranges as necessary
     pub fn remove(&mut self, range: InclusiveRange) {
+        // Assert this is a valid range
         assert!(range.start <= range.end);
 
         // We go in a loop and try to subtract `range` from existing ranges instead of just going

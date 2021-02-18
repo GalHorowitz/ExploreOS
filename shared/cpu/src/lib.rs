@@ -57,9 +57,22 @@ pub fn get_cr2() -> usize {
     cr2
 }
 
+/// Gets the value of the EFLAGS register
+#[inline]
+pub fn get_eflags() -> u32 {
+    let eflags: u32;
+    unsafe {
+        asm!("
+            pushfd
+            pop {}
+        ", out(reg) eflags, options(nomem, preserves_flags));
+    }
+    eflags
+}
+
 /// Reads the timestamp counter (with an LFENCE on either side to keep instructions from reordering)
 #[inline]
-pub fn rdtsc() -> u64 {
+pub fn serializing_rdtsc() -> u64 {
     let result_high: u32;
     let result_low: u32;
     unsafe {
@@ -70,6 +83,16 @@ pub fn rdtsc() -> u64 {
         ", out("edx") result_high, out("eax") result_low);
     }
     ((result_high as u64) << 32) | (result_low as u64)
+}
+
+/// Halts the cpu in a loop while servicing interrupts
+#[inline]
+pub fn halt_and_service_interrupts() -> ! {
+    loop {
+        unsafe {
+            asm!("hlt", options(nomem, nostack));
+        }
+    }
 }
 
 /// Disables interrupts and halts the cpu
@@ -111,9 +134,24 @@ pub unsafe fn load_gdt(base: u32, limit: u16) {
     ", in("ebx") base, in("ax") limit, options(nomem, preserves_flags));
 }
 
+/// Clears the interrupt flag (IF) in the EFLAGS register, this causes the processor to ignore
+/// maskable hardware interrupts
+#[inline]
+pub fn cli() {
+    unsafe {
+        asm!("cli", options(nomem, nostack));
+    }
+}
+
 /// Sets the interrupt flag (IF) in the EFLAGS register, this allows the processor to respond to
 /// maskable hardware interrupts
 #[inline]
 pub unsafe fn sti() {
     asm!("sti", options(nomem, nostack));
+}
+
+/// Gets the interrupt flag (IF) from the EFLAGS register
+#[inline]
+pub fn get_if() -> bool {
+    (get_eflags() & (1 << 9)) != 0
 }

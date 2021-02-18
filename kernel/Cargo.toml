@@ -12,6 +12,7 @@ range_set = { path = "../shared/range_set" }
 page_tables = { path = "../shared/page_tables" }
 boot_args = { path = "../shared/boot_args" }
 lock_cell = { path = "../shared/lock_cell" }
+exclusive_cell = { path = "../shared/exclusive_cell" }
 
 [profile.dev]
 panic = "abort"

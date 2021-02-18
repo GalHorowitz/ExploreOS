@@ -1,4 +1,4 @@
-//! Responisble for physical memory manager in the bootloader
+//! Responisble for physical memory management in the bootloader
 
 use crate::real_mode::{invoke_realmode_interrupt, RegisterState};
 
@@ -47,7 +47,7 @@ impl PhysMem for PhysicalMemory {
 }
 
 /// Global to hold the `RangeSet` of available physical memory
-pub static PHYS_MEM: LockCell<Option<PhysicalMemory>> = LockCell::new(None);
+pub static PHYS_MEM: LockCell<Option<PhysicalMemory>> = LockCell::new(None, false);
 
 /// The global allocator for the bootloader
 #[global_allocator]

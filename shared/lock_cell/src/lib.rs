@@ -6,32 +6,45 @@ use core::cell::UnsafeCell;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::ops::{Drop, Deref, DerefMut};
 
-/// Spin lock for interior mutability. This lock must not be used in an interrupt context, or it
-/// could dead-lock. Instead use a lock which disables interrupts.
+/// Spin lock for interior mutability.
 pub struct LockCell<T> {
     /// The actuall cell, for interior mutability
     cell: UnsafeCell<T>,
     /// The next to text to be acquired
     available_ticket: AtomicUsize,
     /// The ticket of the current owner of the lock
-    owner_ticket: AtomicUsize
+    owner_ticket: AtomicUsize,
+    /// Whether or not the lock should mask interrupts when held
+    interruptable: bool,
 }
 
 // We make sure access from multiple threads is safe
 unsafe impl<T> Sync for LockCell<T> {}
 
 impl<T> LockCell<T>  {
-    /// Construct a LockCell
-    pub const fn new(val: T) -> LockCell<T> {
+    /// Construct a LockCell holding the initial value `val`. If `interruptable` is true, hardware
+    /// interrupts will be masked while the lock is held.
+    pub const fn new(val: T, interruptable: bool) -> LockCell<T> {
         LockCell {
             cell: UnsafeCell::new(val),
             available_ticket: AtomicUsize::new(0),
-            owner_ticket: AtomicUsize::new(0)
+            owner_ticket: AtomicUsize::new(0),
+            interruptable
         }
     }
 
     /// Acquire exclusive rights to the cell. The function blocks until it has rights.
     pub fn lock(&self) -> LockCellGuard<T> {
+        // We only need to unmask interrupts when the lock is released if this is an interruptable
+        // lock and interrupts were already unmasked
+        let unmask_interrupts = if self.interruptable && cpu::get_if() {
+            // If interrupts are unmaksed, we mask them for the duration of the critical section
+            cpu::cli();
+            true
+        } else {
+            false
+        };
+
         // Get our ticket in the queue
         let ticket = self.available_ticket.fetch_add(1, Ordering::SeqCst);
 
@@ -41,19 +54,28 @@ impl<T> LockCell<T>  {
         }
 
         LockCellGuard {
-            lock: self
+            lock: self,
+            unmask_interrupts
         }
     }
 }
 
 pub struct LockCellGuard<'a, T> {
-    lock: &'a LockCell<T>
+    lock: &'a LockCell<T>,
+    /// Whether or not the interrupts were enabled when the lock was taken, used to re-enable
+    /// interrupts when the lock is released
+    unmask_interrupts: bool,
 }
 
 impl<'a, T> Drop for LockCellGuard<'a, T> {
     fn drop(&mut self) {
         // Advance the queue so the next ticket becomes the owner
         self.lock.owner_ticket.fetch_add(1, Ordering::SeqCst);
+
+        // Unmask interrupts if needed
+        if self.unmask_interrupts {
+            unsafe { cpu::sti(); }
+        }
     }
 }
 
@@ -82,7 +104,7 @@ mod tests {
 
     #[test]
     fn it_works() {
-        let lock_cell = LockCell::new(1);
+        let lock_cell = LockCell::new(1, false);
         {
             assert!(*lock_cell.lock() == 1);
         }
@@ -102,7 +124,7 @@ mod tests {
             }
         }
 
-        let lock_cell = LockCell::new(TestDrop);
+        let lock_cell = LockCell::new(TestDrop, false);
         let _val = lock_cell.lock();
     }
 }

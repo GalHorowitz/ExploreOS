@@ -1,64 +1,9 @@
+//! Interrupts initialization and handling
+
+mod pic_8259a;
+
 use alloc::alloc::{alloc_zeroed, Layout};
 use serial::println;
-
-#[allow(dead_code)]
-pub enum DescriptorType { TaskGate, InterruptGate, TrapGate }
-
-/// Constructs the u64 representing an interrupt descriptor based on the given parameters
-/// 
-/// * `segment` - the segment selector to switch to when calling the handler
-/// * `entry_offset` - the offset into the segment of the handler
-/// * `priviliege` - the requested privilege level (0-3)
-/// * `protected_mode` - if true, the handler will stay in protected mode, else the cpu will switch
-///                      to real mode before calling the handler
-/// * `typ` - the descriptor type
-pub fn construct_interrupt_descriptor(segment: u16, entry_offset: u32, privilege: u32,
-    protected_mode: bool, typ: DescriptorType) -> u64 {
-    assert!(privilege < 4);
-    
-    let type_bits = match typ {
-        DescriptorType::InterruptGate => 0,
-        DescriptorType::TrapGate => 1,
-        DescriptorType::TaskGate => unimplemented!()
-    };
-    
-    let low_dword = ((segment as u32) << 16) | (entry_offset & 0xFFFF);
-    let high_dword = (entry_offset & 0xFFFF0000) | (1 << 15) | (privilege << 13) |
-        ((protected_mode as u32) << 11) | (3 << 9) | (type_bits << 8);
-    
-    ((high_dword as u64) << 32) | (low_dword as u64)
-}
-
-/// General interrupt handler, each interrupt lands here after going through its specific gate
-unsafe extern "cdecl" fn interrupt_handler(interrupt_number: u32, error_code: u32) {
-    println!("Handling interrupt {} with code={}", interrupt_number, error_code);
-    match interrupt_number {
-        0 => println!("Divide Error Exception (#DE)"),
-        1 => println!("Debug Exception (#DB)"),
-        2 => println!("NMI Interrupt"),
-        3 => println!("Breakpoint Exception (#BP)"),
-        4 => println!("Overflow Exception (#OF)"),
-        5 => println!("BOUND Range Exceeded Exception (#BR)"),
-        6 => println!("Invalid Opcode Exception (#UD)"),
-        7 => println!("Device Not Available Exception (#NM)"),
-        8 => println!("Double Fault Exception (#DF)"),
-        9 => println!("Coprocessor Segment Overrun"),
-        10 => println!("Invalid TSS Exception (#TS)"),
-        11 => println!("Segment Not Present (#NP)"),
-        12 => println!("Stack Fault Exception (#SS)"),
-        13 => println!("General Protection Exception (#GP)"),
-        14 => println!("Page-Fault Exception (#PF)"),
-        16 => println!("x87 FPU Floating-Point Error (#MF)"),
-        17 => println!("Alignment Check Exception (#AC)"),
-        18 => println!("Machine-Check Exception (#MC)"),
-        19 => println!("SIMD Floating-Point Exception (#XM)"),
-        20 => println!("Virtualization Exception (#VE)"),
-        21 => println!("Control Protection Exception (#CP)"),
-        103 => println!("SYSCALL"),
-        _ => panic!("Unrecognized Interrupt")
-    }
-    cpu::halt();
-}
 
 /// Initializes the IDT
 pub fn init() {
@@ -68,6 +13,9 @@ pub fn init() {
     // performance
     let idt = unsafe {
         let idt_ptr = alloc_zeroed(Layout::from_size_align(IDT_ENTRIES * 8, 8).unwrap());
+        if idt_ptr.is_null() {
+            panic!("Failed to allocate memory for the IDT")
+        }
         core::slice::from_raw_parts_mut(idt_ptr as *mut u64, IDT_ENTRIES)
     };
 
@@ -115,23 +63,155 @@ pub fn init() {
     idt[21] = construct_interrupt_descriptor(0x8, interrupt_21_handler as u32, 0, true,
         DescriptorType::InterruptGate);
     
-    // Setup the descriptor for system calls
-    idt[0x67] = construct_interrupt_descriptor(0x8, interrupt_103_handler as u32, 0, true,
+    // Setup the descriptor for the 8259A PICs
+    idt[32] = construct_interrupt_descriptor(0x8, interrupt_32_handler as u32, 0, true,
         DescriptorType::InterruptGate);
+    idt[33] = construct_interrupt_descriptor(0x8, interrupt_33_handler as u32, 0, true,
+        DescriptorType::InterruptGate);
+    idt[34] = construct_interrupt_descriptor(0x8, interrupt_34_handler as u32, 0, true,
+        DescriptorType::InterruptGate);
+    idt[35] = construct_interrupt_descriptor(0x8, interrupt_35_handler as u32, 0, true,
+        DescriptorType::InterruptGate);
+    idt[36] = construct_interrupt_descriptor(0x8, interrupt_36_handler as u32, 0, true,
+        DescriptorType::InterruptGate);
+    idt[37] = construct_interrupt_descriptor(0x8, interrupt_37_handler as u32, 0, true,
+        DescriptorType::InterruptGate);
+    idt[38] = construct_interrupt_descriptor(0x8, interrupt_38_handler as u32, 0, true,
+        DescriptorType::InterruptGate);
+    idt[39] = construct_interrupt_descriptor(0x8, interrupt_39_handler as u32, 0, true,
+        DescriptorType::InterruptGate);
+    idt[40] = construct_interrupt_descriptor(0x8, interrupt_40_handler as u32, 0, true,
+        DescriptorType::InterruptGate);
+    idt[41] = construct_interrupt_descriptor(0x8, interrupt_41_handler as u32, 0, true,
+        DescriptorType::InterruptGate);
+    idt[42] = construct_interrupt_descriptor(0x8, interrupt_42_handler as u32, 0, true,
+        DescriptorType::InterruptGate);
+    idt[43] = construct_interrupt_descriptor(0x8, interrupt_43_handler as u32, 0, true,
+        DescriptorType::InterruptGate);
+    idt[44] = construct_interrupt_descriptor(0x8, interrupt_44_handler as u32, 0, true,
+        DescriptorType::InterruptGate);
+    idt[45] = construct_interrupt_descriptor(0x8, interrupt_45_handler as u32, 0, true,
+        DescriptorType::InterruptGate);
+    idt[46] = construct_interrupt_descriptor(0x8, interrupt_46_handler as u32, 0, true,
+        DescriptorType::InterruptGate);
+    idt[47] = construct_interrupt_descriptor(0x8, interrupt_47_handler as u32, 0, true,
+        DescriptorType::InterruptGate);
+    
+    // Setup the descriptor for syscalls
+    idt[0x67] = construct_interrupt_descriptor(0x8, interrupt_103_handler as u32, 0, true,
+        DescriptorType::TrapGate);
 
     // Load the IDT
     unsafe {
         cpu::load_idt(idt.as_ptr() as u32, (IDT_ENTRIES*8 - 1) as u16);
+    }
+
+    // Enable the 8259A PIC
+    pic_8259a::init();
+
+    // Unmask hardware interrupts
+    unsafe { cpu::sti(); }
+}
+
+#[allow(dead_code)]
+pub enum DescriptorType { TaskGate, InterruptGate, TrapGate }
+
+/// Constructs the u64 representing an interrupt descriptor based on the given parameters
+/// 
+/// * `segment` - the segment selector to switch to when calling the handler
+/// * `entry_offset` - the offset into the segment of the handler
+/// * `priviliege` - the requested privilege level (0-3)
+/// * `protected_mode` - if true, the handler will stay in protected mode, else the cpu will switch
+///                      to real mode before calling the handler
+/// * `typ` - the descriptor type
+pub fn construct_interrupt_descriptor(segment: u16, entry_offset: u32, privilege: u32,
+    protected_mode: bool, typ: DescriptorType) -> u64 {
+    assert!(privilege < 4);
+    
+    let type_bits = match typ {
+        DescriptorType::InterruptGate => 0,
+        DescriptorType::TrapGate => 1,
+        DescriptorType::TaskGate => unimplemented!()
+    };
+    
+    let low_dword = ((segment as u32) << 16) | (entry_offset & 0xFFFF);
+    let high_dword = (entry_offset & 0xFFFF0000) | (1 << 15) | (privilege << 13) |
+        ((protected_mode as u32) << 11) | (3 << 9) | (type_bits << 8);
+    
+    ((high_dword as u64) << 32) | (low_dword as u64)
+}
+
+/// General interrupt handler, each interrupt lands here after going through its specific gate
+unsafe extern "cdecl" fn interrupt_handler(interrupt_number: u32, error_code: u32, eip: u32) {
+    let interrupt_number = interrupt_number as u8;
+    
+    if interrupt_number >= pic_8259a::PIC_IRQ_OFFSET
+        && interrupt_number < pic_8259a::PIC_IRQ_OFFSET + 8 {
+        let irq = interrupt_number - pic_8259a::PIC_IRQ_OFFSET;
+        if pic_8259a::handle_spurious_irq(irq) {
+            println!("WARNING: Spurious PIC IRQ {}!", irq);
+            return;
+        }
+        
+        if irq == 0 {
+            // serial::print!(".");
+        } else if irq == 1 {
+            crate::ps2::keyboard::handle_interrupt();
+        } else if irq == 12 {
+            unimplemented!("Mouse interrupt");
+        } else {
+            println!("PIC IRQ {}", irq);
+        }
+        
+        pic_8259a::send_eoi(irq);
+        return;
+    }
+    
+    // FIXME: This will dead-lock if the exception happened while the serial lock is held
+    println!("Handling interrupt {} with code={} eip={:#010x}", interrupt_number, error_code, eip);
+
+    match interrupt_number {
+        0 => panic!("Divide Error Exception (#DE)"),
+        1 => panic!("Debug Exception (#DB)"),
+        2 => panic!("NMI Interrupt"),
+        3 => panic!("Breakpoint Exception (#BP)"),
+        4 => panic!("Overflow Exception (#OF)"),
+        5 => panic!("BOUND Range Exceeded Exception (#BR)"),
+        6 => panic!("Invalid Opcode Exception (#UD)"),
+        7 => panic!("Device Not Available Exception (#NM)"),
+        8 => panic!("Double Fault Exception (#DF)"),
+        9 => panic!("Coprocessor Segment Overrun"),
+        10 => panic!("Invalid TSS Exception (#TS)"),
+        11 => panic!("Segment Not Present (#NP)"),
+        12 => panic!("Stack Fault Exception (#SS)"),
+        13 => panic!("General Protection Exception (#GP)"),
+        14 => panic!("Page-Fault Exception (#PF) CR2={:#010x}", cpu::get_cr2()),
+        16 => panic!("x87 FPU Floating-Point Error (#MF)"),
+        17 => panic!("Alignment Check Exception (#AC)"),
+        18 => panic!("Machine-Check Exception (#MC)"),
+        19 => panic!("SIMD Floating-Point Exception (#XM)"),
+        20 => panic!("Virtualization Exception (#VE)"),
+        21 => panic!("Control Protection Exception (#CP)"),
+        103 => panic!("SYSCALL"),
+        _ => panic!("Unrecognized Interrupt")
     }
 }
 
 macro_rules! int_asm_no_err_code {
     ($x:literal) => {
         asm!("
-                push dword ptr 0        // Push fake error code
-                push dword ptr {int_no} // Push the interrupt number
+                push eax                // Save `cdecl` caller-saved registers on the stack
+                push ecx
+                push edx
+                mov eax, [esp + 12]     // Grab the return eip from the interrupt frame
+                push eax                // Push arg 3: the interrupt's return eip
+                push dword ptr 0        // Push arg 2: the fake error code
+                push dword ptr {int_no} // Push arg 1: the interrupt number
                 call {int_handler}      // Call the handler function
-                add esp, 8              // Pop the interrupt number and the error code
+                add esp, 12             // Pop the interrupt number, the error code, and the ret eip
+                pop edx                 // Restore caller-saved registers
+                pop ecx
+                pop eax
                 iretd                   // Return from the interrupt
             ",
             int_no = const $x,
@@ -144,9 +224,20 @@ macro_rules! int_asm_no_err_code {
 macro_rules! int_asm_err_code {
     ($x:literal) => {
         asm!("
-                push dword ptr {int_no} // Push the interrupt number
+                push eax                // Save `cdecl` caller-saved registers on the stack
+                push ecx
+                push edx
+                mov eax, [esp + 16]     // Grab the return eip from the interrupt frame
+                mov ecx, [esp + 12]     // Grab the interrupt error code
+                push eax                // Push arg 3: the interrupt's return eip
+                push ecx                // Push arg 2: the error code
+                push dword ptr {int_no} // Push arg 1: the interrupt number
                 call {int_handler}      // Call the handler function
                 add esp, 8              // Pop the interrupt number and the error code
+                add esp, 12             // Pop the interrupt number, the error code, and the ret eip
+                pop edx                 // Restore caller-saved registers
+                pop ecx
+                pop eax
                 iretd                   // Return from the interrupt
             ",
             int_no = const $x,
@@ -259,6 +350,86 @@ unsafe extern fn interrupt_20_handler() -> ! {
 #[naked]
 unsafe extern fn interrupt_21_handler() -> ! {
     int_asm_err_code!(21);
+}
+
+#[naked]
+unsafe extern fn interrupt_32_handler() -> ! {
+    int_asm_no_err_code!(32);
+}
+
+#[naked]
+unsafe extern fn interrupt_33_handler() -> ! {
+    int_asm_no_err_code!(33);
+}
+
+#[naked]
+unsafe extern fn interrupt_34_handler() -> ! {
+    int_asm_no_err_code!(34);
+}
+
+#[naked]
+unsafe extern fn interrupt_35_handler() -> ! {
+    int_asm_no_err_code!(35);
+}
+
+#[naked]
+unsafe extern fn interrupt_36_handler() -> ! {
+    int_asm_no_err_code!(36);
+}
+
+#[naked]
+unsafe extern fn interrupt_37_handler() -> ! {
+    int_asm_no_err_code!(37);
+}
+
+#[naked]
+unsafe extern fn interrupt_38_handler() -> ! {
+    int_asm_no_err_code!(38);
+}
+
+#[naked]
+unsafe extern fn interrupt_39_handler() -> ! {
+    int_asm_no_err_code!(39);
+}
+
+#[naked]
+unsafe extern fn interrupt_40_handler() -> ! {
+    int_asm_no_err_code!(40);
+}
+
+#[naked]
+unsafe extern fn interrupt_41_handler() -> ! {
+    int_asm_no_err_code!(41);
+}
+
+#[naked]
+unsafe extern fn interrupt_42_handler() -> ! {
+    int_asm_no_err_code!(42);
+}
+
+#[naked]
+unsafe extern fn interrupt_43_handler() -> ! {
+    int_asm_no_err_code!(43);
+}
+
+#[naked]
+unsafe extern fn interrupt_44_handler() -> ! {
+    int_asm_no_err_code!(44);
+}
+
+#[naked]
+unsafe extern fn interrupt_45_handler() -> ! {
+    int_asm_no_err_code!(45);
+}
+
+#[naked]
+unsafe extern fn interrupt_46_handler() -> ! {
+    int_asm_no_err_code!(46);
+}
+
+#[naked]
+unsafe extern fn interrupt_47_handler() -> ! {
+    int_asm_no_err_code!(47);
 }
 
 #[naked]

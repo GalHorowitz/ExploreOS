@@ -38,6 +38,9 @@ version = "0.1.0"
 [[package]]
 name = "lock_cell"
 version = "0.1.0"
+dependencies = [
+ "cpu",
+]
 
 [[package]]
 name = "page_tables"

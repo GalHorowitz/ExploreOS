@@ -5,9 +5,9 @@
 use lock_cell::LockCell;
 
 /// Global state for serial ports.
-/// FIXME: This uses a spin-lock which doesn't disable interrupts. If we use this in interrupt this
-/// could cause deadlocks.
-pub static SERIAL: LockCell<Option<SerialPort>> = LockCell::new(None);
+/// IMPORTANT: While maskable hardware interrupts are masked while this lock is held, care must be
+/// taken to not use the lock in non-maskable interrupts like NMIs and exceptions.
+pub static SERIAL: LockCell<Option<SerialPort>> = LockCell::new(None, true);
 
 /// A collection of 4 serial ports. These are the 4 serial ports identified by the BIOS, i.e. these
 /// are COM1-COM4 in the BDA.

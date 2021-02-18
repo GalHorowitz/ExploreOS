@@ -1,3 +1,5 @@
+//! GDT initialization after transition to virtual memory
+
 use alloc::alloc::{alloc, Layout};
 
 /// Sets up a GDT in virtual kernel space

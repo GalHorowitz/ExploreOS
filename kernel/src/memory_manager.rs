@@ -1,3 +1,5 @@
+//! Responisble for physical and virtual memory management
+
 use core::convert::TryInto;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::alloc::{GlobalAlloc, Layout};
@@ -8,10 +10,16 @@ use lock_cell::LockCell;
 use boot_args::{BootArgs, PAGE_DIRECTORY_VADDR, LAST_PAGE_TABLE_VADDR,
     KERNEL_ALLOCATIONS_BASE_VADDR};
 
-/// Global to hold the `RangeSet` of available physical memory
-pub static PHYS_MEM: LockCell<Option<PhysicalMemory>> = LockCell::new(None);
-/// Global to hold the `PageDirectory` which manages pages
-pub static PAGES: LockCell<Option<PageDirectory>> = LockCell::new(None);
+/// Global to hold the `RangeSet` of available physical memory.
+/// IMPORTANT: While maskable hardware interrupts are masked while this lock is held, care must be
+/// taken to not create dead-locks when using this in non-maskable interrupts like NMIs and
+/// exceptions.
+pub static PHYS_MEM: LockCell<Option<PhysicalMemory>> = LockCell::new(None, true);
+/// Global to hold the `PageDirectory` which manages pages.
+/// IMPORTANT: While maskable hardware interrupts are masked while this lock is held, care must be
+/// taken to not create dead-locks when using this in non-maskable interrupts like NMIs and
+/// exceptions.
+pub static PAGES: LockCell<Option<PageDirectory>> = LockCell::new(None, true);
 // FIXME: When accessing pages we almost always need access to physical memory too, and currently
 // I make sure to always grab the lock on physical memory first, but this is error-prone and if one
 // thread grabs the PAGES lock first and another grabs the PHYS_MEM lock first we could dead-lock
