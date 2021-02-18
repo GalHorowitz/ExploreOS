@@ -7,6 +7,8 @@ use core::alloc::Layout;
 pub const PAGE_ENTRY_PRESENT: u32   = 1<<0;
 pub const PAGE_ENTRY_WRITE: u32     = 1<<1;
 pub const PAGE_ENTRY_USER: u32      = 1<<2;
+pub const PAGE_ENTRY_PWT: u32       = 1<<3; // Page-level write-through
+pub const PAGE_ENTRY_PCD: u32       = 1<<4; // Page-level cache disable
 
 /// Strongly typed physical address to diffreniate addresses
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -145,19 +147,49 @@ impl PageDirectory {
                 }
             }
             
-            // Build the page table entry
-            let mut raw_page_table_entry = physical_page.0 | PAGE_ENTRY_PRESENT;
-            if write {
-                raw_page_table_entry |= PAGE_ENTRY_WRITE;
-            }
-            if user {
-                raw_page_table_entry |= PAGE_ENTRY_USER;
-            }
-
             // Make the virtual address mapping
-            unsafe {
-                self.map_raw(phys_mem, VirtAddr(page << 12), raw_page_table_entry, false, true)?;
-            }
+            let page_virt_addr = VirtAddr(page << 12);
+            self.map_to_phys_page(phys_mem, page_virt_addr, physical_page, write, user, false,
+                true)?;
+        }
+
+        Some(())
+    }
+
+    /// Maps the virtual page at `virt_addr` to the physical page at `phys_addr` with the specified
+    /// permissions `write` and `user`. If `update` is false, this will not overwrite an existing
+    /// mapping. If `cacheable` is false, the mapping will be marked as 'Strong Uncacheable (UC)'.
+    pub fn map_to_phys_page(&mut self, phys_mem: &mut impl PhysMem, virt_addr: VirtAddr,
+        phys_addr: PhysAddr, write: bool, user: bool, update: bool, cacheable: bool) -> Option<()> {
+        // Make sure that the requested virtual address is aligned to a page
+        if (virt_addr.0 & 0xfff) != 0 {
+            return None;
+        }
+
+        // Make sure that the requested physical address is aligned to a page
+        if (phys_addr.0 & 0xfff) != 0 {
+            return None;
+        }
+
+        // Build the page table entry
+        let mut raw_page_table_entry = phys_addr.0 | PAGE_ENTRY_PRESENT;
+        if write {
+            raw_page_table_entry |= PAGE_ENTRY_WRITE;
+        }
+        if user {
+            raw_page_table_entry |= PAGE_ENTRY_USER;
+        }
+        if !cacheable {
+            // TODO: This is an extremely simplistic implementation which toggles between the
+            // default state and UC, which I added when working on the local APIC. I should read the
+            // relevant chapters in the manual (for future reference, 4.9, 4.10, 11) and update this
+            // for increased performance where I can enable some caching (i.e. screen buffers)
+            raw_page_table_entry |= PAGE_ENTRY_PWT | PAGE_ENTRY_PCD;
+        }
+
+        // Make the virtual address mapping
+        unsafe {
+            self.map_raw(phys_mem, virt_addr, raw_page_table_entry, update, true)?;
         }
 
         Some(())
@@ -165,7 +197,7 @@ impl PageDirectory {
 
     /// Set the page table entry for `virt_addr` to be `raw`. If `update` is false, this will not
     /// overwrite an existing mapping. If `create` is false, a page table won't be created if it
-    /// doesn't exist (and the mapping will not occur)
+    /// doesn't exist (and the mapping will not occur).
     /// 
     /// If the page directory entry (and matching page table) doesn't exist it will be created.
     /// The function will return the physical address of the page table, or `None` if the mapping

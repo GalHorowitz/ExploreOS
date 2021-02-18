@@ -1,4 +1,5 @@
-use core::{convert::TryInto, sync::atomic::{AtomicUsize, Ordering}};
+use core::convert::TryInto;
+use core::sync::atomic::{AtomicUsize, Ordering};
 use core::alloc::{GlobalAlloc, Layout};
 
 use range_set::{RangeSet, InclusiveRange};
@@ -81,9 +82,8 @@ impl PhysMem for PhysicalMemory {
         }
 
         // Make the mapping of the last virtual page (0xFFFFF000-0xFFFFFFFF) to the physical page
-        let raw_table_entry =
-            phys_addr_page | page_tables::PAGE_ENTRY_PRESENT | page_tables::PAGE_ENTRY_WRITE;
-        page_dir.map_raw(self, VirtAddr(0xFFFFF000), raw_table_entry, true, true)?;
+        page_dir.map_to_phys_page(self, VirtAddr(0xFFFFF000), PhysAddr(phys_addr_page), true, false,
+            true, true)?;
 
         // Calculate the virtual address based on the offset from the start of the page
         let virt_addr = 0xFFFFF000 + (phys_addr.0 - phys_addr_page);

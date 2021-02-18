@@ -106,7 +106,7 @@ fn scroll_one_line() {
     screen_buffer[num_elements..].fill(0);
 }
 
-/// Returns a slice to the screen buffer. Wraps unsafe code
+/// Returns a slice to the screen buffer
 fn get_screen_buffer() -> &'static mut [u16] {
     unsafe {
         core::slice::from_raw_parts_mut(SCREEN_BUFFER_ADDRESS as *mut u16, SCREEN_WIDTH*SCREEN_HEIGHT)

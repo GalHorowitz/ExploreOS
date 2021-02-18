@@ -128,13 +128,8 @@ fn setup_kernel(boot_disk_id: u8, bootloader_size: u32) -> (u32, u32, u32, PhysA
 
     // Temp identity map of the first 1MiB so we can continue executing after changing cr3
     for paddr in (0..(1024*1024)).step_by(4096) {
-        let raw_table_entry = 
-            paddr | page_tables::PAGE_ENTRY_PRESENT | page_tables::PAGE_ENTRY_WRITE;
-
-        unsafe {
-            directory.map_raw(phys_mem, VirtAddr(paddr), raw_table_entry, false, true)
-                .expect("Failed to identity map");
-        }
+        directory.map_to_phys_page(phys_mem, VirtAddr(paddr), PhysAddr(paddr), true, false, false,
+            true);
     }
 
     // The new CR3 is the physical address of the page directory
@@ -147,16 +142,11 @@ fn setup_kernel(boot_disk_id: u8, bootloader_size: u32) -> (u32, u32, u32, PhysA
     let table_paddr = unsafe {
         let raw_table_entry =
             new_cr3 | page_tables::PAGE_ENTRY_PRESENT | page_tables::PAGE_ENTRY_WRITE;
-        let table_paddr = directory.map_raw(phys_mem, VirtAddr(PAGE_DIRECTORY_VADDR),
-            raw_table_entry, false, true).expect("Failed to map page directory");
-
-        let raw_table_entry =
-            table_paddr.0 | page_tables::PAGE_ENTRY_PRESENT | page_tables::PAGE_ENTRY_WRITE;
-        directory.map_raw(phys_mem, VirtAddr(LAST_PAGE_TABLE_VADDR), raw_table_entry, false, true)
-            .expect("Failed to map page directory");
-
-        table_paddr
+        directory.map_raw(phys_mem, VirtAddr(PAGE_DIRECTORY_VADDR), raw_table_entry, false, true)
+            .expect("Failed to map page directory")
     };
+    directory.map_to_phys_page(phys_mem, VirtAddr(LAST_PAGE_TABLE_VADDR), table_paddr, true, false,
+        false, true).expect("Failed to map page directory");
     
     println!("Kernel entry at {:#x}, Page directory at {:#x}", kernel_entry, new_cr3);
 

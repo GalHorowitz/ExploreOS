@@ -47,6 +47,16 @@ pub fn get_cr3() -> usize {
     cr3
 }
 
+/// Gets the value held in CR2
+#[inline]
+pub fn get_cr2() -> usize {
+    let cr2: usize;
+    unsafe {
+        asm!("mov {}, cr2", out(reg) cr2, options(nomem, preserves_flags, nostack));
+    }
+    cr2
+}
+
 /// Reads the timestamp counter (with an LFENCE on either side to keep instructions from reordering)
 #[inline]
 pub fn rdtsc() -> u64 {
@@ -99,4 +109,11 @@ pub unsafe fn load_gdt(base: u32, limit: u16) {
         pop ax
         pop ebx
     ", in("ebx") base, in("ax") limit, options(nomem, preserves_flags));
+}
+
+/// Sets the interrupt flag (IF) in the EFLAGS register, this allows the processor to respond to
+/// maskable hardware interrupts
+#[inline]
+pub unsafe fn sti() {
+    asm!("sti", options(nomem, nostack));
 }

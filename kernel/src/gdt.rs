@@ -12,6 +12,9 @@ pub fn init() {
     // performance
 	let gdt = unsafe {
         let gdt_ptr = alloc(Layout::from_size_align(GDT_ENTRIES * 8, 8).unwrap());
+        if gdt_ptr.is_null() {
+            panic!("Failed to allocate memory for the GDT");
+        }
         core::slice::from_raw_parts_mut(gdt_ptr as *mut u64, GDT_ENTRIES)
     };
 
