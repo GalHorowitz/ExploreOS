@@ -94,6 +94,8 @@ fn ensure_installed(command: &str, args: &[&str], expected: &[&str]) -> Option<(
 fn main() -> Result<(), Box<dyn Error>>{
     let args: Vec<String> = std::env::args().collect();
 
+    let mut kernel_debug = false;
+
     if args.len() > 1 {
         // Handle a clean argument by deleting the build directory
         if args[1] == "clean" {
@@ -101,6 +103,8 @@ fn main() -> Result<(), Box<dyn Error>>{
                 std::fs::remove_dir_all("build")?;
             }
             return Ok(());
+        } else if args[1] == "kernel_debug" {
+            kernel_debug = true;
         } else {
             return Err("Unknown argument".into());
         }
@@ -183,13 +187,25 @@ fn main() -> Result<(), Box<dyn Error>>{
 
     // Build the kernel
     let kernel_build_dir = Path::new("build").join("kernel").canonicalize()?;
-    if !Command::new("cargo").current_dir("kernel")
-        .args(&["build", "--release", "--target-dir", kernel_build_dir.to_str().unwrap()])
-        .status()?.success() {
-        return Err("Failed to build kernel".into());
+    if kernel_debug {
+        if !Command::new("cargo").current_dir("kernel")
+            .args(&["build", "--target-dir", kernel_build_dir.to_str().unwrap()])
+            .status()?.success() {
+            return Err("Failed to build kernel".into());
+        }
+    } else {
+        if !Command::new("cargo").current_dir("kernel")
+            .args(&["build", "--release", "--target-dir", kernel_build_dir.to_str().unwrap()])
+            .status()?.success() {
+            return Err("Failed to build kernel".into());
+        }
     }
 
-    let kernel_elf = kernel_build_dir.join("i586-unknown-linux-gnu").join("release").join("kernel");
+    let kernel_elf = if kernel_debug {
+        kernel_build_dir.join("i586-unknown-linux-gnu").join("debug").join("kernel")
+    } else {
+        kernel_build_dir.join("i586-unknown-linux-gnu").join("release").join("kernel")
+    };
     println!("Total kernel size is {:#x}", kernel_elf.metadata()?.len());
 
     // Build the final os image, the bootloader comes first

@@ -17,8 +17,8 @@ use core::convert::TryInto;
 use serial::println;
 use elf_parser::ElfParser;
 use page_tables::{PageDirectory, VirtAddr, PhysAddr};
-use boot_args::{BootArgs, KERNEL_STACK_SIZE, KERNEL_STACK_BASE_VADDR, PAGE_DIRECTORY_VADDR,
-    LAST_PAGE_TABLE_VADDR, KERNEL_ALLOCATIONS_BASE_VADDR};
+use boot_args::{BootArgs, KERNEL_STACK_SIZE, KERNEL_STACK_BASE_VADDR, LAST_PAGE_TABLE_VADDR,
+    KERNEL_ALLOCATIONS_BASE_VADDR};
 
 /// Rust bootloader entry point
 #[no_mangle]
@@ -136,15 +136,10 @@ fn setup_kernel(boot_disk_id: u8, bootloader_size: u32) -> (u32, u32, u32, PhysA
     let new_cr3 = directory.get_directory_addr().0;
 
 
-    // We permenantly map the page directory so we can access it to make further mapping after we
-    // switch paging on. We also need to map the page table containg the last page, which will be
+    // We permenantly map the page table containg the last page, which will be
     // used to map other page tables in and out of the last page so we can access them.
-    let table_paddr = unsafe {
-        let raw_table_entry =
-            new_cr3 | page_tables::PAGE_ENTRY_PRESENT | page_tables::PAGE_ENTRY_WRITE;
-        directory.map_raw(phys_mem, VirtAddr(PAGE_DIRECTORY_VADDR), raw_table_entry, false, true)
-            .expect("Failed to map page directory")
-    };
+    let table_paddr = directory.get_page_table(phys_mem, VirtAddr(0xFFFFF000))
+        .expect("Failed to get the phys addr of the last page table");
     directory.map_to_phys_page(phys_mem, VirtAddr(LAST_PAGE_TABLE_VADDR), table_paddr, true, false,
         false, true).expect("Failed to map page directory");
     

@@ -16,10 +16,11 @@ exclusive_cell = { path = "../shared/exclusive_cell" }
 
 [profile.dev]
 panic = "abort"
-debug = true
+lto = "fat"
+incremental = false
 
 [profile.release]
 panic = "abort"
 debug = false
-opt-level = 2
+opt-level = 3
 lto = "fat"

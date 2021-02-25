@@ -5,10 +5,9 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use core::alloc::{GlobalAlloc, Layout};
 
 use range_set::{RangeSet, InclusiveRange};
-use page_tables::{PageDirectory, PhysMem, PhysAddr, VirtAddr};
+use page_tables::{PAGE_ENTRY_PRESENT, PAGE_ENTRY_WRITE, PageDirectory, PhysAddr, PhysMem, VirtAddr};
 use lock_cell::LockCell;
-use boot_args::{BootArgs, PAGE_DIRECTORY_VADDR, LAST_PAGE_TABLE_VADDR,
-    KERNEL_ALLOCATIONS_BASE_VADDR};
+use boot_args::{BootArgs, LAST_PAGE_TABLE_VADDR, KERNEL_ALLOCATIONS_BASE_VADDR};
 
 /// Global to hold the `RangeSet` of available physical memory.
 /// IMPORTANT: While maskable hardware interrupts are masked while this lock is held, care must be
@@ -28,8 +27,8 @@ static NEXT_AVAILABLE_VADDR: AtomicUsize = AtomicUsize::new(KERNEL_ALLOCATIONS_B
 
 pub struct PhysicalMemory{
     memory_ranges: RangeSet,
-    page_directory_paddr: PhysAddr,
-    last_page_table_paddr: PhysAddr
+    last_page_table_paddr: PhysAddr,
+    current_phys_mapping: Option<PhysAddr>
 }
 
 impl PhysMem for PhysicalMemory {
@@ -46,21 +45,8 @@ impl PhysMem for PhysicalMemory {
         // Make sure the entire size bytes fit in the address space
         phys_addr_start.checked_add(size - 1)?;
 
-        // Check if this physical address is inside the page directory
-        if phys_addr.0 >= self.page_directory_paddr.0
-            && phys_addr.0 <= self.page_directory_paddr.0 + 4095 {
-            // The page directory is mapped at `PAGE_DIRECTORY_VADDR`, so the translation of the
-            // requested physical address is just at the relevant offset of that virtual address
-            let page_offset = phys_addr.0 - self.page_directory_paddr.0;
-
-            // Check that the requested physical window resides entirely inside the page directory
-            if page_offset.checked_add(size as u32 - 1)? > 4095 {
-                return None;
-            }
-
-            return Some((PAGE_DIRECTORY_VADDR + page_offset) as *mut u8);
-        }
-
+        // Small optimization: If we ever need to acces the physical page of the last page table, we
+        // can use the permanent mapping we make anyway.
         // Check if this physical address is inside the page table of the last page
         if phys_addr.0 >= self.last_page_table_paddr.0
             && phys_addr.0 <= self.last_page_table_paddr.0 + 4095 {
@@ -76,22 +62,32 @@ impl PhysMem for PhysicalMemory {
             return Some((LAST_PAGE_TABLE_VADDR + page_offset) as *mut u8);
         }
 
-        // If the physical address is not on of the permanent mappings, we must make a mapping for
-        // it, so we need access to the page directory
-        let page_dir = page_dir?;
-
         // Calculate the address of the page containing the physical address
         let phys_addr_page = phys_addr.0 & !0xFFF;
-        // Make sure the requested physical window does not extend beyond this one page. This should
-        // not be a problem: the page table functions only ever use this to read and write to page
-        // tables which are one page long.
-        if phys_addr.0.checked_add(size as u32 - 1)? > (phys_addr_page + 4095) {
-            return None;
-        }
 
-        // Make the mapping of the last virtual page (0xFFFFF000-0xFFFFFFFF) to the physical page
-        page_dir.map_to_phys_page(self, VirtAddr(0xFFFFF000), PhysAddr(phys_addr_page), true, false,
-            true, true)?;
+        if self.current_phys_mapping.is_none()
+            || self.current_phys_mapping.unwrap().0 != phys_addr_page {
+            // If the physical address is not already mapped in, we must make a mapping for it, so we
+            // need access to the page directory struct
+            let page_dir = page_dir?;
+
+            // Make sure the requested physical window does not extend beyond this one page. This should
+            // not be a problem: the page table functions only ever use this to read and write to page
+            // tables which are one page long.
+            if phys_addr.0.checked_add(size as u32 - 1)? > (phys_addr_page + 4095) {
+                return None;
+            }
+
+            // Make the mapping of the last virtual page (0xFFFFF000-0xFFFFFFFF) to the physical page.
+            // It is critical we use the `map_raw_directly` method, which uses the virtual address we
+            // provide to it, instead of asking for a virtual address from this function, which would
+            // cause an inifnite loop
+            let raw_pte = PAGE_ENTRY_PRESENT | PAGE_ENTRY_WRITE | phys_addr_page;
+            page_dir.map_raw_directly(VirtAddr(0xFFFFF000), raw_pte, true,
+                VirtAddr(LAST_PAGE_TABLE_VADDR));   
+            self.current_phys_mapping = Some(PhysAddr(phys_addr_page));
+        }
+        
 
         // Calculate the virtual address based on the offset from the start of the page
         let virt_addr = 0xFFFFF000 + (phys_addr.0 - phys_addr_page);
@@ -206,8 +202,8 @@ pub fn init(boot_args: &BootArgs) {
     // Setup the physical memory based on the boot args
     let mut phys_mem = PhysicalMemory{
         memory_ranges: boot_args.free_memory,
-        page_directory_paddr: PhysAddr(cr3 & !0xFFF),
-        last_page_table_paddr: boot_args.last_page_table_paddr
+        last_page_table_paddr: boot_args.last_page_table_paddr,
+        current_phys_mapping: None
     };
     
     // Setup the page directory
