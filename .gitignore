@@ -3,3 +3,5 @@
 /kernel/target
 /build
 *.code-workspace
+bochs_serial.out
+qemu_log.txt
