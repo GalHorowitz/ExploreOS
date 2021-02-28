@@ -73,8 +73,8 @@ impl PS2KeyboardCommand {
 			PS2KeyboardCommand::DisableScanning => 0xF5,
 			PS2KeyboardCommand::EnableScanning => 0xF4,
 			PS2KeyboardCommand::SetScanCodeSet(_) => 0xF0,
-			PS2KeyboardCommand::SetTypematicByte { delay: _, rate: _ } => 0xF3,
-			PS2KeyboardCommand::SetLEDs { scroll_lock: _, number_lock: _, caps_lock: _ } => 0xED,
+			PS2KeyboardCommand::SetTypematicByte { .. } => 0xF3,
+			PS2KeyboardCommand::SetLEDs { .. } => 0xED,
 		}
 	}
 
@@ -143,7 +143,6 @@ impl PS2KeyboardDriver {
 					self.state = PS2KeyboardState::SelfTest;
 				},
 				PS2KeyboardState::SelfTest => {
-					// We assert that the self-test was successful
 					assert!(keyboard_message == KEYBOARD_MSG_SELF_TEST_PASSED);
 					// We then begin identifying the keyboard by first disabling scanning so it
 					// won't interfere with the identification result and sending the identify cmd
@@ -201,16 +200,10 @@ impl PS2KeyboardDriver {
 				},
 				PS2KeyboardState::ScanningKey => {
 					if keyboard_message == KEYBOARD_MSG_EXTENDED_KEY {
-						// If this is an extended-key message, then we transition to the extended
-						// key scanning state
 						self.state = PS2KeyboardState::ScanningExtendedKey;
 					} else if keyboard_message == KEYBOARD_MSG_RELEASED_KEY {
-						// If the is a released-key message, then we transition to the released key
-						// scanning state
 						self.state = PS2KeyboardState::ScanningReleasedKey;
 					} else if keyboard_message == PAUSE_PRESSED_MULTIBYTE_SCANCODE[0] {
-						// If this is the first byte of the Pause Key Pressed multibyte, we then
-						// transition to the pause key scanning state
 						self.state = PS2KeyboardState::ScanningPausePressedMultibyte(1);
 					} else {
 						// If this is not a message with a special meaning, it is just a simple scan
@@ -221,12 +214,8 @@ impl PS2KeyboardDriver {
 				},
 				PS2KeyboardState::ScanningExtendedKey => {
 					if keyboard_message == KEYBOARD_MSG_RELEASED_KEY {
-						// If the is a released-key message, then we transition to the released
-						// extended key scanning state
 						self.state = PS2KeyboardState::ScanningReleasedExtendedKey;
 					} else if keyboard_message == PRINT_SCREEN_PRESSED_MULTIBYTE_SCANCODE[0] {
-						// If this is the first byte of the PrtScn Pressed multibyte, we then
-						// transition to the print screen key scanning state
 						self.state = PS2KeyboardState::ScanningPrintScreenPressedMultibyte(1);
 					} else {
 						// If this is not a message with a special meaning, it is just an extended
@@ -244,8 +233,6 @@ impl PS2KeyboardDriver {
 				},
 				PS2KeyboardState::ScanningReleasedExtendedKey => {
 					if keyboard_message == PRINT_SCREEN_RELEASED_MULTIBYTE_SCANCODE[0] {
-						// If this is the first byte of the PrtScn Released multibyte, we then
-						// transition to the print screen key scanning state
 						self.state = PS2KeyboardState::ScanningPrintScreenReleasedMultibyte(1);
 					} else {
 						// If this is not a message with a special meaning, it is just an extended

@@ -201,12 +201,8 @@ impl PageDirectory {
     /// Set the page table entry for `virt_addr` to be `raw`. If `update` is false, this will not
     /// overwrite an existing mapping. If `create` is false, a page table won't be created if it
     /// doesn't exist (and the mapping will not occur).
-    /// 
-    /// If the page directory entry (and matching page table) doesn't exist it will be created.
-    /// The function will return the physical address of the page table, or `None` if the mapping
-    /// was not updated for any reason.
     pub unsafe fn map_raw(&mut self, phys_mem: &mut impl PhysMem, virt_addr: VirtAddr, raw: u32,
-        update: bool, create: bool) -> Option<PhysAddr> {
+        update: bool, create: bool) -> Option<()> {
         // Make sure that the requested virtual address is aligned to a page
         if (virt_addr.0 & 0xfff) != 0 {
             return None;
@@ -262,7 +258,7 @@ impl PageDirectory {
             cpu::invlpg(virt_addr.0 as usize);
         }
         
-        Some(PhysAddr(directory_entry & !0xfff))
+        Some(())
     }
 
     /// Set the page table entry for `virt_addr` to be `raw`. If `update` is false, this will not

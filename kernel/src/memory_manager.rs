@@ -9,25 +9,22 @@ use page_tables::{PAGE_ENTRY_PRESENT, PAGE_ENTRY_WRITE, PageDirectory, PhysAddr,
 use lock_cell::LockCell;
 use boot_args::{BootArgs, LAST_PAGE_TABLE_VADDR, KERNEL_ALLOCATIONS_BASE_VADDR};
 
-/// Global to hold the `RangeSet` of available physical memory.
+/// Global to hold the `RangeSet` of available physical memory and the `PageDirectory` which manages
+/// page mappings.
 /// IMPORTANT: While maskable hardware interrupts are masked while this lock is held, care must be
 /// taken to not create dead-locks when using this in non-maskable interrupts like NMIs and
 /// exceptions.
-pub static PHYS_MEM: LockCell<Option<PhysicalMemory>> = LockCell::new(None, true);
-/// Global to hold the `PageDirectory` which manages pages.
-/// IMPORTANT: While maskable hardware interrupts are masked while this lock is held, care must be
-/// taken to not create dead-locks when using this in non-maskable interrupts like NMIs and
-/// exceptions.
-pub static PAGES: LockCell<Option<PageDirectory>> = LockCell::new(None, true);
-// FIXME: When accessing pages we almost always need access to physical memory too, and currently
-// I make sure to always grab the lock on physical memory first, but this is error-prone and if one
-// thread grabs the PAGES lock first and another grabs the PHYS_MEM lock first we could dead-lock
+pub static PHYS_MEM: LockCell<Option<(PhysicalMemory, PageDirectory)>> = LockCell::new(None);
 
-static NEXT_AVAILABLE_VADDR: AtomicUsize = AtomicUsize::new(KERNEL_ALLOCATIONS_BASE_VADDR as usize);
-
+/// A struct that implements `PhysMem` for use in mappings
 pub struct PhysicalMemory{
+    /// Actual usable ranges of physical memory
     memory_ranges: RangeSet,
+
+    /// The physical address of the page table of the last page (Used when accessing physical mem)
     last_page_table_paddr: PhysAddr,
+
+    /// The current physical mapping in the last page (That is used to access physical memory)
     current_phys_mapping: Option<PhysAddr>
 }
 
@@ -113,6 +110,14 @@ impl PhysMem for PhysicalMemory {
     }
 }
 
+struct FreePagesEntry {
+    page_count: usize,
+    next: Option<*mut FreePagesEntry>,
+}
+
+static NEXT_AVAILABLE_VADDR: AtomicUsize = AtomicUsize::new(KERNEL_ALLOCATIONS_BASE_VADDR as usize);
+static FREE_PAGES_LIST: LockCell<Option<*mut FreePagesEntry>> = LockCell::new(None);
+
 /// The global allocator for the bootloader
 #[global_allocator]
 static GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator;
@@ -121,9 +126,71 @@ static GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator;
 struct GlobalAllocator;
 
 impl GlobalAllocator {
-    unsafe fn alloc_internal(&self, layout: Layout) -> Option<*mut u8> {
+    /// Tries to satisfy the allocation of page-aligned size `aligned_size` using the free list.
+    /// Returns `None` if not successful
+    fn alloc_from_free_list(&self, aligned_size: usize) -> Option<*mut u8> {
+        assert!(aligned_size & 0xFFF == 0);
+
+        let mut start_of_free_list = FREE_PAGES_LIST.lock();
+        // Check if there are any entries in the free list
+        if let Some(free_list) = *start_of_free_list {
+            // Calculate the number of pages we need to fit the allocation
+            let num_pages_needed = aligned_size / 4096;
+
+            let mut last_entry: Option<*mut FreePagesEntry> = None;
+            let mut entry = free_list;
+            loop {
+                let free_pages = unsafe { core::ptr::read(entry) };
+
+                // We check if we can fit the allocation in this entry
+                if num_pages_needed <= free_pages.page_count {
+                    if num_pages_needed < free_pages.page_count {
+                        // If the allocation is smaller than the size of entry, we just shorten it
+                        let new_page_count = free_pages.page_count - num_pages_needed;
+                        unsafe {
+                            core::ptr::write(entry, FreePagesEntry {
+                                page_count: new_page_count,
+                                next: free_pages.next
+                            });
+                        }
+
+                        // And finally we return a pointer to the end of the updated free area
+                        return Some(((entry as usize) + (new_page_count*4096)) as *mut u8);
+                    } else {
+                        // Else, if the entry is completely used up, we need to update the last
+                        // entry's next pointer
+                        if let Some(last_entry) = last_entry {
+                            unsafe {
+                                let mut last = core::ptr::read(last_entry);
+                                last.next = free_pages.next;
+                                core::ptr::write(last_entry, last);
+                            }
+                        } else {
+                            // If we are using the first entry in the list, we need to update the
+                            // start-of-the-list pointer
+                            *start_of_free_list = free_pages.next;
+                        }
+
+                        return Some(entry as *mut u8);
+                    }
+                } else if free_pages.next.is_some() {
+                    // If we can't, but there are more entries in the list, we advance to the next
+                    last_entry = Some(entry);
+                    entry = free_pages.next.unwrap();
+                } else {
+                    // If this is the end of the list, we exit the loop
+                    break;
+                }
+            }
+        }
+
+        // If we didn't find any free entry that we can use there is nothing to do
+        None
+    }
+
+    fn alloc_internal(&self, layout: Layout) -> Option<*mut u8> {
         // The `RangeSet` allocator only supports 32-bit
-        let size: u32 = layout.size().try_into().ok()?;
+        let _size: u32 = layout.size().try_into().ok()?;
         let _align: u32 = layout.align().try_into().ok()?;
 
         // We currently just rely on the fact that we allocate pages which are page-aligned, so any
@@ -131,17 +198,26 @@ impl GlobalAllocator {
         assert!(layout.align() <= 4096);
 
         // Round up the size to the next multiple of a page
-        let aligned_size = (size.checked_add(4095)?) & !0xFFF;
+        let aligned_size = (layout.size().checked_add(4095)?) & !0xFFF;
+
+        // If the free pages list is not empty, we check if we can reuse an existing mapping
+        if let Some(allocation) = self.alloc_from_free_list(aligned_size) {
+            return Some(allocation);
+        }
+
         // Grab a virtual address for this allocation
-        let virt_addr = NEXT_AVAILABLE_VADDR.fetch_add(aligned_size as usize, Ordering::SeqCst);
+        let virt_addr = NEXT_AVAILABLE_VADDR.fetch_add(aligned_size, Ordering::SeqCst);
 
-        // Get access to physical memory
+        // Check we have enough room for the allocation
+        if virt_addr.checked_add(aligned_size - 1)? >=
+            KERNEL_ALLOCATIONS_BASE_VADDR as usize + 0x200000 {
+            // TODO: Move the size to a better place
+            return None;
+        }
+
+        // Get access to physical memory and the page directory
         let mut pmem = PHYS_MEM.lock();
-        let phys_mem = pmem.as_mut()?;
-
-        // Get access to the page directory
-        let mut pages = PAGES.lock();
-        let page_dir = pages.as_mut()?;
+        let (phys_mem, page_dir) = pmem.as_mut()?;
 
         // Map the memory for the allocation
         page_dir.map(phys_mem, VirtAddr(virt_addr as u32), aligned_size as u32, true, false)?;
@@ -154,27 +230,76 @@ impl GlobalAllocator {
             panic!("Attempt to dealloc a zero sized allocation");
         }
 
-        // Get access to physical memory
-        let mut pmem = PHYS_MEM.lock();
-        let phys_mem = pmem.as_mut()?;
+        // Round up the size to the next multiple of a page (which is the actual allocation size
+        // our allocator provides)
+        let aligned_size = (layout.size().checked_add(4095)?) & !0xFFF;
 
-        // Get access to the page directory
-        let mut pages = PAGES.lock();
-        let page_dir = pages.as_mut()?;
+        let mut start_of_free_list = FREE_PAGES_LIST.lock();
 
-        // Calculate the first and last virtual address so we can iterate over the pages
-        let start_vaddr = ptr as u32;
-        let last_vaddr = (ptr as u32).checked_add(layout.size() as u32 - 1)?;
+        let mut new_entry_ptr = ptr as *mut FreePagesEntry;
+        let mut new_entry = FreePagesEntry {
+            page_count: aligned_size / 4096,
+            next: *start_of_free_list
+        };
 
-        // Our allocator always gives page aligned virtual addressed, so we can rely on this
-        // assumption, but we assert for future-proofing
-        assert!(start_vaddr & 0xFFF == 0);
+        // If the free list is not empty, we need to check if the freed allocation is adjacent to
+        // any of the existing free entries and merge them
+        if let Some(free_list) = *start_of_free_list {
+            let mut last_entry: Option<*mut FreePagesEntry> = None;
+            let mut entry = free_list;
+            loop {
+                let free_pages = unsafe { core::ptr::read(entry) };
 
-        for vaddr in (start_vaddr..last_vaddr).step_by(4096) {
-            // Go through each page in the allocation and unmap it (while freeing the backing
-            // physical page)
-            page_dir.unmap(phys_mem, VirtAddr(vaddr), true)?;
+                if ptr as usize + aligned_size == entry as usize {
+                    // If the freed allocation ends at the start of this free entry, we remove the
+                    // existing entry and update our new one
+                    new_entry.page_count += free_pages.page_count;
+
+                    if let Some(last_entry) = last_entry {
+                        unsafe {
+                            let mut last = core::ptr::read(last_entry);
+                            last.next = free_pages.next;
+                            core::ptr::write(last_entry, last);
+                        }
+                    } else {
+                        // If this is the free entry, we update the list heads
+                        *start_of_free_list = free_pages.next;
+                    }
+                } else if ptr as usize == entry as usize + (free_pages.page_count * 4096) {
+                    // Else, if the freed allocation start at the end of this free entry, we remove
+                    // the existing entry and update our new one
+                    new_entry.page_count += free_pages.page_count;
+                    new_entry_ptr = entry;
+
+                    if let Some(last_entry) = last_entry {
+                        unsafe {
+                            let mut last = core::ptr::read(last_entry);
+                            last.next = free_pages.next;
+                            core::ptr::write(last_entry, last);
+                        }
+                    } else {
+                        // If this is the free entry, we update the list heads
+                        *start_of_free_list = free_pages.next;
+                    }
+                }
+
+                // If there is another entry in the list we continue to it, else we finish
+                if free_pages.next.is_some() {
+                    last_entry = Some(entry);
+                    entry = free_pages.next.unwrap();
+                } else {
+                    break;
+                }
+            }
         }
+        
+        // Save the list entry at the start of the allocation
+        unsafe {
+            core::ptr::write(new_entry_ptr, new_entry);
+        }
+        
+        // Update the head of the free list
+        *start_of_free_list = Some(new_entry_ptr);
 
         Some(())
     }
@@ -194,7 +319,6 @@ unsafe impl GlobalAlloc for GlobalAllocator {
 pub fn init(boot_args: &BootArgs) {
     // Grab the physical memory and page locks
     let mut pmem = PHYS_MEM.lock();
-    let mut pages = PAGES.lock();
 
     // Get the CR3 set by the bootloader which is the base address of the page directory
     let cr3 = cpu::get_cr3() as u32;
@@ -215,6 +339,5 @@ pub fn init(boot_args: &BootArgs) {
         page_directory.unmap(&mut phys_mem, VirtAddr(paddr), false);
     }
     
-    *pmem = Some(phys_mem);
-    *pages = Some(page_directory);
+    *pmem = Some((phys_mem, page_directory));
 }

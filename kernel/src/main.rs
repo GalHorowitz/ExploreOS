@@ -53,7 +53,7 @@ pub extern fn entry(boot_args_ptr: *const BootArgs) -> ! {
     // }
 
     let start = cpu::serializing_rdtsc();
-    let mut vec: alloc::vec::Vec<u8> = alloc::vec::Vec::with_capacity(512 * 1024 * 1024);
+    let mut vec: alloc::vec::Vec<u8> = alloc::vec::Vec::with_capacity(1 * 1024 * 1024);
     vec.push(4u8);
     let elapsed = cpu::serializing_rdtsc() - start;
     println!("Took {} cycles to allocate {} bytes", elapsed, vec.capacity());

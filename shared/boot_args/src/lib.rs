@@ -15,8 +15,6 @@ pub const KERNEL_STACK_BASE_VADDR: u32 = 0xc0000000 - KERNEL_STACK_SIZE;
 /// The virtual address of the base of kernel virtual allocations
 pub const KERNEL_ALLOCATIONS_BASE_VADDR: u32 = 0xC4000000;
 
-/// The virtual address where the page directory is mapped
-pub const PAGE_DIRECTORY_VADDR: u32 = 0xFFFFD000;
 /// The virtual address where the page table containing the last page is mapped
 pub const LAST_PAGE_TABLE_VADDR: u32 = 0xFFFFE000;
 

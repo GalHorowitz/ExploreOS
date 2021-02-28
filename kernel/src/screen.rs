@@ -22,11 +22,9 @@ const CURSOR_LOW_REG_INDEX: u8 = 15;
 
 /// Initializes the screen
 pub fn init() {
+    // Get access to physical memory and the page directory
     let mut pmem = crate::memory_manager::PHYS_MEM.lock();
-    let phys_mem = pmem.as_mut().unwrap();
-    
-    let mut pages = crate::memory_manager::PAGES.lock();
-    let page_dir = pages.as_mut().unwrap();
+    let (phys_mem, page_dir) = pmem.as_mut().unwrap();
 
     // Map the screen buffer so we can write to it
     page_dir.map_to_phys_page(phys_mem, VirtAddr(SCREEN_BUFFER_VADDR),
@@ -67,22 +65,37 @@ pub fn print_with_attributes(message: &str, attributes: u8) {
 /// advances the cursor. Also handles new lines.
 pub fn print_char(character: u8, attributes: u8) {
     let screen_buffer = get_screen_buffer();
-
     let cursor_offset = get_cursor_offset();
 
     // Check if we got a new line
     if character == b'\n' {
-        // Get the actual row
+        // Calculate the cursor's row
         let cursor_row = cursor_offset / SCREEN_WIDTH;
 
-        // If we get a new line at the last row we need to scroll the screen
         if cursor_row == SCREEN_HEIGHT - 1 {
+            // If we get a new line at the last row we need to scroll the screen
             scroll_one_line();
             // Actually set the cursor offset to the start of this row
             set_cursor_offset(cursor_row * SCREEN_WIDTH);
         } else {
             // Set the cursor offset to the start of the next row
             set_cursor_offset((cursor_row + 1) * SCREEN_WIDTH);
+        }
+    } else if character == b'\r' {
+        // If this is a carriage return, we move the cursor to the start of the row
+
+        // Calculate the cursor row to get the offset to the start of the row
+        let cursor_row = cursor_offset / SCREEN_WIDTH;
+        set_cursor_offset(cursor_row * SCREEN_WIDTH);
+    } else if character == 8 {
+        // If this is a backspace character, we need to delete the last character.
+        // There is nothing to delete if we are the start of the screen
+        if cursor_offset != 0 {
+            // We clar the last character by setting it to zero. We retain the attributes or else
+            // the cursor won't show up
+            screen_buffer[cursor_offset - 1] = (attributes as u16) << 8;
+            // We move the cursor back
+            set_cursor_offset(cursor_offset - 1);
         }
     } else {
         // Combine the character and attribute

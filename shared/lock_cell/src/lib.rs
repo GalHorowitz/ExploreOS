@@ -22,14 +22,25 @@ pub struct LockCell<T> {
 unsafe impl<T> Sync for LockCell<T> {}
 
 impl<T> LockCell<T>  {
-    /// Construct a LockCell holding the initial value `val`. If `interruptable` is true, hardware
-    /// interrupts will be masked while the lock is held.
-    pub const fn new(val: T, interruptable: bool) -> LockCell<T> {
+    /// Construct a LockCell holding the initial value `val`. Hardware interrupts will be masked
+    /// while the lock is held.
+    pub const fn new(val: T) -> LockCell<T> {
         LockCell {
             cell: UnsafeCell::new(val),
             available_ticket: AtomicUsize::new(0),
             owner_ticket: AtomicUsize::new(0),
-            interruptable
+            interruptable: true
+        }
+    }
+
+    /// Construct a LockCell holding the initial value `val`. Hardware interrupts will NOT be masked
+    /// while the lock is held.
+    pub const fn new_non_interruptable(val: T) -> LockCell<T> {
+        LockCell {
+            cell: UnsafeCell::new(val),
+            available_ticket: AtomicUsize::new(0),
+            owner_ticket: AtomicUsize::new(0),
+            interruptable: false
         }
     }
 
@@ -104,7 +115,7 @@ mod tests {
 
     #[test]
     fn it_works() {
-        let lock_cell = LockCell::new(1, false);
+        let lock_cell = LockCell::new_non_interruptable(1);
         {
             assert!(*lock_cell.lock() == 1);
         }
@@ -124,7 +135,7 @@ mod tests {
             }
         }
 
-        let lock_cell = LockCell::new(TestDrop, false);
+        let lock_cell = LockCell::new_non_interruptable(TestDrop);
         let _val = lock_cell.lock();
     }
 }

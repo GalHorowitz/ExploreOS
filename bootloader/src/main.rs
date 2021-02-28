@@ -129,7 +129,7 @@ fn setup_kernel(boot_disk_id: u8, bootloader_size: u32) -> (u32, u32, u32, PhysA
     // Temp identity map of the first 1MiB so we can continue executing after changing cr3
     for paddr in (0..(1024*1024)).step_by(4096) {
         directory.map_to_phys_page(phys_mem, VirtAddr(paddr), PhysAddr(paddr), true, false, false,
-            true);
+            true).expect("Failed to map temp identity map");
     }
 
     // The new CR3 is the physical address of the page directory

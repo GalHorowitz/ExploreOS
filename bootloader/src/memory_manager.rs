@@ -47,7 +47,7 @@ impl PhysMem for PhysicalMemory {
 }
 
 /// Global to hold the `RangeSet` of available physical memory
-pub static PHYS_MEM: LockCell<Option<PhysicalMemory>> = LockCell::new(None, false);
+pub static PHYS_MEM: LockCell<Option<PhysicalMemory>> = LockCell::new(None);
 
 /// The global allocator for the bootloader
 #[global_allocator]
