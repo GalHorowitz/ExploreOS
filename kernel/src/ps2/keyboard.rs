@@ -388,8 +388,8 @@ impl PS2KeyboardDriver {
 /// is inherent.
 static KEYBOARD_DRIVER: ExclusiveCell<PS2KeyboardDriver> = ExclusiveCell::new(PS2KeyboardDriver::new());
 
-/// Handles an interrupt from the PS/2 keyboard
-pub fn handle_interrupt() {
+/// Handles an interrupt from the PS/2 keyboard (should only be called when an interrupt happens)
+pub unsafe fn handle_interrupt() {
 	KEYBOARD_DRIVER.acquire().handle_interrupt();
 }
 

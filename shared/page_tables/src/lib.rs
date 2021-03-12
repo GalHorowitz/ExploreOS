@@ -37,7 +37,7 @@ pub trait PhysMem {
 
     /// Same as `allocate_phys_mem` except the memory is also zeroed. A reference to `page_dir` is
     /// required if the zero-ing of memory would require to map the memory in.
-    /// Calls `translate_phys` so past translations are invalidated.
+    /// Calls `translate_phys`, so past translations are invalidated.
     fn allocate_zeroed_phys_mem(&mut self, page_dir: Option<&mut PageDirectory>, layout: Layout)
         -> Option<PhysAddr> {
         // Allocate the memory
@@ -70,7 +70,7 @@ impl PageDirectory {
     // Creates a new empty page table
     pub fn new(phys_mem: &mut impl PhysMem) -> Option<Self> {
         // Allocate a page-aligned page directory
-        let directory_layout = Layout::from_size_align(4096, 4096).ok()?;
+        let directory_layout = Layout::from_size_align(4096, 4096).unwrap();
         let directory = phys_mem.allocate_zeroed_phys_mem(None, directory_layout)?;
         Some(PageDirectory { directory })
     }
@@ -90,6 +90,7 @@ impl PageDirectory {
     /// `write` and `user`.
     /// In practice, this maps all the pages that containg the `size` bytes.
     /// The bytes are uninitialized.
+    #[must_use]
     pub fn map(&mut self, phys_mem: &mut impl PhysMem, virt_addr: VirtAddr, size: u32,
         write: bool, user: bool) -> Option<()> {
         self.map_internal(phys_mem, virt_addr, size, write, user, None::<fn(usize) -> u8>)
@@ -100,6 +101,7 @@ impl PageDirectory {
     /// In practice, this maps all the pages that containg the `size` bytes.
     /// Each byte in the pages containing the requested bytes will be initialized by calling `init`
     /// with its offset.
+    #[must_use]
     pub fn map_init<F>(&mut self, phys_mem: &mut impl PhysMem, virt_addr: VirtAddr,
         size: u32, write: bool, user: bool, init: F) -> Option<()>
         where F: Fn(usize) -> u8 {
@@ -112,6 +114,7 @@ impl PageDirectory {
     /// 
     /// If `init` is not None, Each byte in the pages containing the requested bytes will be
     /// initialized by calling `init` with its offset.
+    #[must_use]
     fn map_internal<F>(&mut self, phys_mem: &mut impl PhysMem, virt_addr: VirtAddr, size: u32,
         write: bool, user: bool, init: Option<F>) -> Option<()> 
         where F: Fn(usize) -> u8 {
@@ -128,7 +131,7 @@ impl PageDirectory {
         // Iterate through each page containing the `size` bytes
         for page in first_addr_page..=last_addr_page {
             // Allocate page-aligned pysical memory for the page
-            let page_layout = Layout::from_size_align(4096, 4096).ok()?;
+            let page_layout = Layout::from_size_align(4096, 4096).unwrap();
             let physical_page = phys_mem.allocate_phys_mem(page_layout)?;
 
             // Check if we need to initialize
@@ -162,6 +165,7 @@ impl PageDirectory {
     /// Maps the virtual page at `virt_addr` to the physical page at `phys_addr` with the specified
     /// permissions `write` and `user`. If `update` is false, this will not overwrite an existing
     /// mapping. If `cacheable` is false, the mapping will be marked as 'Strong Uncacheable (UC)'.
+    #[must_use]
     pub fn map_to_phys_page(&mut self, phys_mem: &mut impl PhysMem, virt_addr: VirtAddr,
         phys_addr: PhysAddr, write: bool, user: bool, update: bool, cacheable: bool) -> Option<()> {
         // Make sure that the requested virtual address is aligned to a page
@@ -201,6 +205,7 @@ impl PageDirectory {
     /// Set the page table entry for `virt_addr` to be `raw`. If `update` is false, this will not
     /// overwrite an existing mapping. If `create` is false, a page table won't be created if it
     /// doesn't exist (and the mapping will not occur).
+    #[must_use]
     pub unsafe fn map_raw(&mut self, phys_mem: &mut impl PhysMem, virt_addr: VirtAddr, raw: u32,
         update: bool, create: bool) -> Option<()> {
         // Make sure that the requested virtual address is aligned to a page
@@ -228,7 +233,7 @@ impl PageDirectory {
             }
 
             // We need to add a new page table, so we allocate an aligned page
-            let table_layout = Layout::from_size_align(4096, 4096).ok()?;
+            let table_layout = Layout::from_size_align(4096, 4096).unwrap();
             let new_table = phys_mem.allocate_zeroed_phys_mem(Some(self), table_layout)?;
 
             // Update the PDE
@@ -266,6 +271,7 @@ impl PageDirectory {
     /// virtual address `page_table_vaddr`.
     /// 
     /// The function will return `None` if the mapping was not updated for any reason.
+    #[must_use]
     pub unsafe fn map_raw_directly(&mut self, virt_addr: VirtAddr, raw: u32, update: bool,
         page_table_vaddr: VirtAddr) -> Option<()> {
         // Make sure that the requested virtual address is aligned to a page
@@ -321,7 +327,7 @@ impl PageDirectory {
         if (directory_entry & PAGE_ENTRY_PRESENT) == 0 {
 
             // We need to add a new page table, so we allocate an aligned page
-            let table_layout = Layout::from_size_align(4096, 4096).ok()?;
+            let table_layout = Layout::from_size_align(4096, 4096).unwrap();
             let new_table = phys_mem.allocate_zeroed_phys_mem(Some(self), table_layout)?;
 
             // Update the PDE
@@ -343,6 +349,7 @@ impl PageDirectory {
     /// Unmaps the page at `virt_addr`. If the page table containing this page becomes empty as a
     /// result of this, it will be freed. If `free_page` is true, the physical page will also be
     /// freed.
+    #[must_use]
     pub fn unmap(&mut self, phys_mem: &mut impl PhysMem, virt_addr: VirtAddr, free_page: bool)
         -> Option<()> {
         // Make sure that the requested virtual address is aligned to a page

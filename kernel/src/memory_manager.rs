@@ -1,5 +1,9 @@
 //! Responisble for physical and virtual memory management
 
+// TODO: Would it be better to just keep page tables mapped in permanently, the virtual addresses
+// stored in a table? It would be simpler and faster, but it would take up space in the virtual
+// address space, which is already limited.
+
 use core::convert::TryInto;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::alloc::{GlobalAlloc, Layout};
@@ -81,7 +85,7 @@ impl PhysMem for PhysicalMemory {
             // cause an inifnite loop
             let raw_pte = PAGE_ENTRY_PRESENT | PAGE_ENTRY_WRITE | phys_addr_page;
             page_dir.map_raw_directly(VirtAddr(0xFFFFF000), raw_pte, true,
-                VirtAddr(LAST_PAGE_TABLE_VADDR));   
+                VirtAddr(LAST_PAGE_TABLE_VADDR))?;   
             self.current_phys_mapping = Some(PhysAddr(phys_addr_page));
         }
         
@@ -118,7 +122,7 @@ struct FreePagesEntry {
 static NEXT_AVAILABLE_VADDR: AtomicUsize = AtomicUsize::new(KERNEL_ALLOCATIONS_BASE_VADDR as usize);
 static FREE_PAGES_LIST: LockCell<Option<*mut FreePagesEntry>> = LockCell::new(None);
 
-/// The global allocator for the bootloader
+/// The global allocator for the kernel
 #[global_allocator]
 static GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator;
 
@@ -332,11 +336,11 @@ pub fn init(boot_args: &BootArgs) {
     
     // Setup the page directory
     let mut page_directory = unsafe { PageDirectory::from_cr3(cr3) };
-
     
     // Unmap the temp identity map of the first physical 1MiB
     for paddr in (0..(1024*1024)).step_by(4096) {
-        page_directory.unmap(&mut phys_mem, VirtAddr(paddr), false);
+        page_directory.unmap(&mut phys_mem, VirtAddr(paddr), false)
+            .expect("Failed to unmap temp identity map");
     }
     
     *pmem = Some((phys_mem, page_directory));

@@ -141,23 +141,11 @@ impl KeyCode {
 	/// Whether or not the key is in the numpad area
 	fn is_in_numpad(&self) -> bool {
 		match self {
-			KeyCode::KeyNumpad0 => true,
-			KeyCode::KeyNumpad1 => true,
-			KeyCode::KeyNumpad2 => true,
-			KeyCode::KeyNumpad3 => true,
-			KeyCode::KeyNumpad4 => true,
-			KeyCode::KeyNumpad5 => true,
-			KeyCode::KeyNumpad6 => true,
-			KeyCode::KeyNumpad7 => true,
-			KeyCode::KeyNumpad8 => true,
-			KeyCode::KeyNumpad9 => true,
-			KeyCode::KeyNumberLock => true,
-			KeyCode::KeyNumpadSlash => true,
-			KeyCode::KeyNumpadAsterisk => true,
-			KeyCode::KeyNumpadMinus => true,
-			KeyCode::KeyNumpadPlus => true,
-			KeyCode::KeyNumpadEnter => true,
-			KeyCode::KeyNumpadPeriod => true,
+			KeyCode::KeyNumpad0 | KeyCode::KeyNumpad1 | KeyCode::KeyNumpad2 | KeyCode::KeyNumpad3 |
+			KeyCode::KeyNumpad4 | KeyCode::KeyNumpad5 | KeyCode::KeyNumpad6 | KeyCode::KeyNumpad7 |
+			KeyCode::KeyNumpad8 | KeyCode::KeyNumpad9 | KeyCode::KeyNumberLock |
+			KeyCode::KeyNumpadSlash | KeyCode::KeyNumpadAsterisk | KeyCode::KeyNumpadMinus |
+			KeyCode::KeyNumpadPlus | KeyCode::KeyNumpadEnter | KeyCode::KeyNumpadPeriod => true,
 			_ => false
 		}
 	}
@@ -165,31 +153,11 @@ impl KeyCode {
 	/// Whether or not this is a letter key
 	fn is_letter(&self) -> bool {
 		match self {
-			KeyCode::KeyA => true,
-			KeyCode::KeyB => true,
-			KeyCode::KeyC => true,
-			KeyCode::KeyD => true,
-			KeyCode::KeyE => true,
-			KeyCode::KeyF => true,
-			KeyCode::KeyG => true,
-			KeyCode::KeyH => true,
-			KeyCode::KeyI => true,
-			KeyCode::KeyJ => true,
-			KeyCode::KeyK => true,
-			KeyCode::KeyL => true,
-			KeyCode::KeyM => true,
-			KeyCode::KeyN => true,
-			KeyCode::KeyO => true,
-			KeyCode::KeyP => true,
-			KeyCode::KeyQ => true,
-			KeyCode::KeyR => true,
-			KeyCode::KeyS => true,
-			KeyCode::KeyT => true,
-			KeyCode::KeyU => true,
-			KeyCode::KeyV => true,
-			KeyCode::KeyW => true,
-			KeyCode::KeyX => true,
-			KeyCode::KeyY => true,
+			KeyCode::KeyA | KeyCode::KeyB | KeyCode::KeyC | KeyCode::KeyD | KeyCode::KeyE |
+			KeyCode::KeyF | KeyCode::KeyG | KeyCode::KeyH | KeyCode::KeyI | KeyCode::KeyJ |
+			KeyCode::KeyK | KeyCode::KeyL | KeyCode::KeyM | KeyCode::KeyN | KeyCode::KeyO |
+			KeyCode::KeyP | KeyCode::KeyQ | KeyCode::KeyR | KeyCode::KeyS | KeyCode::KeyT |
+			KeyCode::KeyU | KeyCode::KeyV | KeyCode::KeyW | KeyCode::KeyX | KeyCode::KeyY |
 			KeyCode::KeyZ => true,
 			_ => false
 		}
@@ -340,6 +308,7 @@ impl KeyEvent {
 					KeyCode::Key0 => b')',
 					KeyCode::KeyMinus => b'_',
 					KeyCode::KeyEquals => b'+',
+					KeyCode::KeyBackspace => 8, // TODO: Should I really do this?
 					KeyCode::KeyTab => b'\t',
 					KeyCode::KeyLeftSquareBracket => b'{',
 					KeyCode::KeyRightSquareBracket => b'}',
@@ -369,6 +338,7 @@ impl KeyEvent {
 					KeyCode::Key0 => b'0',
 					KeyCode::KeyMinus => b'-',
 					KeyCode::KeyEquals => b'=',
+					KeyCode::KeyBackspace => 8, // TODO: Should I really do this?
 					KeyCode::KeyTab => b'\t',
 					KeyCode::KeyLeftSquareBracket => b'[',
 					KeyCode::KeyRightSquareBracket => b']',
@@ -463,6 +433,9 @@ pub fn key_pressed_event(key_code: KeyCode) {
 	// FIXME: REMOVE DEBUG
 	if let Some(chr) = event.as_ascii() {
 		crate::screen::print_char(chr, crate::screen::ATTR_WHITE_ON_BLACK);
+		if chr == b'\n' {
+			crate::screen::print("> ");
+		}
 	}
 }
 
@@ -485,7 +458,7 @@ pub fn key_released_event(key_code: KeyCode) {
 		|| keyboard_state.key_state[KeyCode::KeyRightLogo as usize];
 
 	// Construct the KeyUp event
-	let event = KeyEvent {
+	let _event = KeyEvent {
 		key_code,
 		event_type: KeyEventType::KeyUp,
 		shift_down,
@@ -495,4 +468,6 @@ pub fn key_released_event(key_code: KeyCode) {
 		caps_lock_enabled: keyboard_state.caps_lock_enabled,
 		number_lock_enabled: keyboard_state.number_lock_enabled,
 	};
+
+	// TODO: Propagate this event somehow
 }

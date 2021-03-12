@@ -134,6 +134,11 @@ pub unsafe fn load_gdt(base: u32, limit: u16) {
     ", in("ebx") base, in("ax") limit, options(nomem, preserves_flags));
 }
 
+#[inline]
+pub unsafe fn load_task_register(segment_selector: u16) {
+    asm!("ltr {:x}", in(reg) segment_selector, options(nomem, preserves_flags, nostack));
+}
+
 /// Clears the interrupt flag (IF) in the EFLAGS register, this causes the processor to ignore
 /// maskable hardware interrupts
 #[inline]
@@ -154,4 +159,33 @@ pub unsafe fn sti() {
 #[inline]
 pub fn get_if() -> bool {
     (get_eflags() & (1 << 9)) != 0
+}
+
+/// Performs a long jump to `cs_selector:eip`. The eflags register will be set to `eflgas` and the
+/// stack will atomically change to `ds_selector:esp`. The data segment selector will also be used
+/// to set all other data segment selectors.
+///
+/// IMPORTANT: The stack-switching is done using an `iret`, which only happens on a CPL change, so
+/// this should only be used in such a context
+#[inline]
+pub unsafe fn jump_to_ring0(eip: u32, cs_selector: u16, eflags: u32, esp: u32, ds_selector: u16)
+    -> ! {
+    let cs_selector = cs_selector as u32;
+    let ds_selector = ds_selector as u32;
+    asm!("
+            cli         // Disable interrutps during segment selector switching
+            mov ds, {0} 
+            mov es, {0}
+            mov fs, {0}
+            mov gs, {0}
+
+            // Setup fake interrupt stack frame
+            push {0}    // SS selector
+            push {1}    // ESP
+            push {2}    // EFLAGS
+            push {3}    // CS selector
+            push {4}    // EIP
+            iretd
+        ", in(reg) ds_selector, in(reg) esp, in(reg) eflags, in(reg) cs_selector, in(reg) eip,
+        options(noreturn));
 }

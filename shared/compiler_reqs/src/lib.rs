@@ -2,6 +2,8 @@
 
 #![no_std]
 
+// TODO: All these routines can be optimized by doing the bulk of the work in dwords
+
 /// libc `memset` implementation in Rust
 /// 
 /// ### Parameters

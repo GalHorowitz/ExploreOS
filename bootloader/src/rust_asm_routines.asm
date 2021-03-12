@@ -155,6 +155,7 @@ jump_to_kernel:
 
 	; Set cr0 to a known state
 	mov eax, cr0
+	or eax, (1<<5)  ; Numeric Error (Native x87 FPU errors)
 	or eax, (1<<16) ; Write Protect
 	or eax, (1<<31) ; Paging
 	mov cr0, eax

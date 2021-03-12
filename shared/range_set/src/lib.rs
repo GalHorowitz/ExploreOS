@@ -1,4 +1,4 @@
-//! Provides `RangeSet`, a set of non-overlaping and non-contiguous overlaping u32 inclusive ranges.
+//! Provides `RangeSet`, a set of non-overlapping and non-contiguous u32 inclusive ranges.
 //! Also includes some convenient methods for extremely simple physical memory allocations.
 
 #![no_std]
