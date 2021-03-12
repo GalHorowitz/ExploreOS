@@ -1,7 +1,7 @@
 //! Interrupts initialization and handling
 
-mod pit_8254;
 mod pic_8259a;
+mod pit_8254;
 
 use exclusive_cell::ExclusiveCell;
 use crate::gdt::KERNEL_CS_SELECTOR;
@@ -17,7 +17,7 @@ struct IDTEntry(u64);
 
 static IDT: ExclusiveCell<[IDTEntry; IDT_ENTRIES]> = ExclusiveCell::new([IDTEntry(0); IDT_ENTRIES]);
 
-/// Initializes the IDT and the PIC, and unmasks interrupts
+/// Initializes the IDT, the PIC and the PIT, and unmasks interrupts
 pub fn init() {
     let mut idt = IDT.acquire();
 
@@ -115,6 +115,9 @@ pub fn init() {
 
     // Enable the 8259A PIC
     pic_8259a::init();
+    
+    // Enable the 8254 PIT
+    pit_8254::init();
 
     // Unmask hardware interrupts
     unsafe { cpu::sti(); }
@@ -163,7 +166,7 @@ unsafe extern "cdecl" fn interrupt_handler(interrupt_number: u32, error_code: u3
         }
         
         if irq == 0 {
-            // serial::print!(".");
+            pit_8254::handle_interrupt();
         } else if irq == 1 {
             crate::ps2::keyboard::handle_interrupt();
         } else if irq == 12 {

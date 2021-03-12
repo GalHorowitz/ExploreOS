@@ -43,7 +43,7 @@ pub extern fn entry(boot_args_ptr: *const BootArgs) -> ! {
     // Initialize the GDT and the TSS
     unsafe { gdt::init(); }
 
-    // Initialize the IDT and enable interrupts
+    // Initialize the IDT, PIC and PIT and enable interrupts
     interrupts::init();
     println!("Enabled interrupts");
 
