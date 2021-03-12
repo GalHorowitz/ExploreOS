@@ -8,7 +8,7 @@
 use page_tables::{VirtAddr, PhysAddr};
 
 const SCREEN_BUFFER_PADDR: u32 = 0xB8000;
-const SCREEN_BUFFER_VADDR: u32 = 0xB8000000;
+const SCREEN_BUFFER_VADDR: u32 = 0xCB800000;
 const SCREEN_HEIGHT: usize = 25;
 const SCREEN_WIDTH: usize = 80;
 pub const ATTR_WHITE_ON_BLACK: u8 = 0x0f;
