@@ -18,6 +18,7 @@ mod gdt;
 mod interrupts;
 mod screen;
 mod keyboard;
+mod mouse;
 mod ps2;
 
 /// Entry point of the kernel. `boot_args_ptr` is a a physical address below 1MiB which points to a

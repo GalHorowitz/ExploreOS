@@ -13,6 +13,8 @@ const PS2_CTRL_WRITE_CMD_PORT: u16 = 0x64;
 const PS2_CTRL_STATUS_OUTPUT_FULL_MASK: u8 = 0x1;
 /// PS/2 controller status mask for the input buffer full bit
 const PS2_CTRL_STATUS_INPUT_FULL_MASK: u8 = 0x2;
+/// PS/2 controller status mask for the output buffer is from the second port bit
+const PS2_CTRL_STATUS_SECOND_PORT_MASK: u8 = 0x20;
 
 /// PS/2 controller config mask for the first port interrupt enable bit
 const PS2_CTRL_CONFIG_FIRST_INTERRUPT_ENABLE_MASK: u8 = 1 << 0;
@@ -32,7 +34,7 @@ const PS2_CTRL_PORT_TEST_PASSED: u8 = 0x0;
 const PS2_DEVICE_RESET_CMD: u8 = 0xFF;
 
 /// Timeout for receiving and sending PS/2 controller data
-const PS2_TIMEOUT: usize = 0x30000000;
+const PS2_TIMEOUT: usize = 0xB000000;
 
 /// Possible commands for the PS/2 controller
 #[repr(u8)]
@@ -56,7 +58,7 @@ pub fn init() {
 	// TODO: Determine if a 8042-compatible PS/2 controller exists using ACPI
 
 	let mut first_port_avail = true;
-	let mut second_port_avail = false;
+	let mut second_port_avail = true;
 
 	// PS/2 init sequence
 	unsafe {
@@ -138,6 +140,24 @@ pub fn init() {
 	}
 
 	serial::println!("Enabled PS/2 Controller [{}, {}]", first_port_avail, second_port_avail);
+}
+
+/// Handles an interrupt from one of the PS/2 devices
+pub fn handle_interrupt() {
+	let status = get_status_register();
+	assert!(status & PS2_CTRL_STATUS_OUTPUT_FULL_MASK != 0);
+
+	let message = unsafe { cpu::in8(PS2_CTRL_DATA_PORT) };
+
+	// Even though we get interrupts with different IRQs for each device, if two interrupts happen
+	// simultaneously, the order of the CPU interrupts and the order of bytes read from the PS/2
+	// controller might be different, so we ignore the IRQ and use the controller status byte to
+	// determine if the message is for the mouse or the keyboard
+	if status & PS2_CTRL_STATUS_SECOND_PORT_MASK != 0 {
+		super::mouse::handle_interrupt(message);
+	} else {
+		super::keyboard::handle_interrupt(message);
+	}
 }
 
 /// Sends a command the PS/2 controller

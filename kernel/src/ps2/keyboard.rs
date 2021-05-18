@@ -1,9 +1,9 @@
 //! PS/2 keyboard driver
 
-use core::unreachable;
 use exclusive_cell::ExclusiveCell;
 use crate::keyboard::KeyCode;
 use crate::println;
+use super::command_queue::{PS2Command, PS2CommandQueue};
 
 /// Whether or not to print driver debug mesages
 const PRINT_DEBUG_MESSAGES: bool = false;
@@ -15,13 +15,8 @@ const TYPEMATIC_REPEAT_DELAY: u8 = 1;
 /// 2Hz respectively
 const TYPEMATIC_REPEAT_RATE: u8 = 20;
 
-/// Maximum amount of command retries when receiving a RESEND response from the keyboard
-const MAX_COMMAND_RETRIES: usize = 3;
-
 /// Command acknowledged keyboard response
 const KEYBOARD_MSG_ACK: u8 = 0xFA;
-/// Resend command keyboard response
-const KEYBOARD_MSG_RESEND: u8 = 0xFE;
 //// Self-test passed keyboard response
 const KEYBOARD_MSG_SELF_TEST_PASSED: u8 = 0xAA;
 /// Message sent before a scan code to indicate the next key is an extended scan code
@@ -35,6 +30,36 @@ const PRINT_SCREEN_PRESSED_MULTIBYTE_SCANCODE: [u8; 3] = [0x12, 0xE0, 0x7C];
 const PRINT_SCREEN_RELEASED_MULTIBYTE_SCANCODE: [u8; 4] = [0x7C, 0xE0, 0xF0, 0x12];
 /// The multi-byte scan code that represents a Pause press (and immediate release)
 const PAUSE_PRESSED_MULTIBYTE_SCANCODE: [u8; 8] = [0xE1, 0x14, 0x77, 0xE1, 0xF0, 0x14, 0xF0, 0x77];
+
+/// Supported keyboard commands
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum PS2KeyboardCommand {
+	IdentifyKeyboard,
+	DisableScanning,
+	EnableScanning,
+	SetScanCodeSet(u8),
+	SetLEDs { scroll_lock: bool, number_lock: bool, caps_lock: bool },
+	SetTypematicByte{ delay: u8, rate: u8 },
+}
+
+impl From<PS2KeyboardCommand> for PS2Command {
+	fn from(command: PS2KeyboardCommand) -> PS2Command {
+        match command {
+			PS2KeyboardCommand::IdentifyKeyboard =>	PS2Command { command: 0xF2, data: None },
+			PS2KeyboardCommand::DisableScanning => PS2Command { command: 0xF5, data: None },
+			PS2KeyboardCommand::EnableScanning => PS2Command { command: 0xF4, data: None },
+			PS2KeyboardCommand::SetScanCodeSet(set) => PS2Command { command: 0xF0, data: Some(set) },
+			PS2KeyboardCommand::SetTypematicByte { delay, rate } => PS2Command {
+				command: 0xF3,
+				data: Some((delay << 5) | rate)
+			},
+			PS2KeyboardCommand::SetLEDs { scroll_lock, number_lock, caps_lock } => PS2Command {
+				command: 0xED,
+				data: Some(((caps_lock as u8) << 2) | ((number_lock as u8) << 1) | (scroll_lock as u8))
+			},
+		}
+    }
+}
 
 /// Keyboard driver state-machine states
 #[derive(Debug)]
@@ -52,57 +77,12 @@ enum PS2KeyboardState {
 	ScanningPausePressedMultibyte(u8),
 }
 
-/// Supported keyboard commands
-#[derive(Clone, Copy, Debug, PartialEq)]
-enum PS2KeyboardCommand {
-	InvalidCommand,
-	IdentifyKeyboard,
-	DisableScanning,
-	EnableScanning,
-	SetScanCodeSet(u8),
-	SetLEDs { scroll_lock: bool, number_lock: bool, caps_lock: bool },
-	SetTypematicByte{ delay: u8, rate: u8 },
-}
-
-impl PS2KeyboardCommand {
-	/// Get the byte that represents the command
-	fn get_command_byte(&self) -> u8 {
-		match self {
-			PS2KeyboardCommand::InvalidCommand => unreachable!(),
-			PS2KeyboardCommand::IdentifyKeyboard => 0xF2,
-			PS2KeyboardCommand::DisableScanning => 0xF5,
-			PS2KeyboardCommand::EnableScanning => 0xF4,
-			PS2KeyboardCommand::SetScanCodeSet(_) => 0xF0,
-			PS2KeyboardCommand::SetTypematicByte { .. } => 0xF3,
-			PS2KeyboardCommand::SetLEDs { .. } => 0xED,
-		}
-	}
-
-	/// Get the command's data byte if one exists, or None if this command does not have a data byte
-	fn get_data_byte(&self) -> Option<u8> {
-		match self {
-			PS2KeyboardCommand::InvalidCommand => unreachable!(),
-			PS2KeyboardCommand::SetScanCodeSet(set) => Some(*set),
-			PS2KeyboardCommand::SetLEDs { scroll_lock, number_lock, caps_lock } => 
-				Some(((*caps_lock as u8) << 2) | ((*number_lock as u8) << 1) | (*scroll_lock as u8)),
-			PS2KeyboardCommand::SetTypematicByte { delay, rate } => Some((*delay << 5) | *rate),
-			_ => None
-		}
-	}
-}
-
 /// A PS/2 keyboard driver
-pub struct PS2KeyboardDriver {
+struct PS2KeyboardDriver {
 	/// The current state of the keyboard
 	state: PS2KeyboardState,
-	/// Command queue for sending and resending commands as needed
-	command_queue: [PS2KeyboardCommand; 5],
-	/// Number of commands in the queue
-	command_queue_length: usize,
-	/// Number of retries of the current queued command
-	command_retries: usize,
-	/// Whether or not we are waiting for an ACK of the command's data byte
-	waiting_for_data_ack: bool
+	/// Command queue for command sequences
+	command_queue: PS2CommandQueue,
 }
 
 impl PS2KeyboardDriver {
@@ -110,30 +90,26 @@ impl PS2KeyboardDriver {
 	const fn new() -> Self {
 		PS2KeyboardDriver {
 			state: PS2KeyboardState::Uninitialized,
-			command_queue: [PS2KeyboardCommand::InvalidCommand; 5],
-			command_queue_length: 0,
-			command_retries: 0,
-			waiting_for_data_ack: false,
+			command_queue: PS2CommandQueue::new(false)
 		}
 	}
 
 	/// Handle a keyboard IRQ
-	pub fn handle_interrupt(&mut self) {
+	pub fn handle_interrupt(&mut self, keyboard_message: u8) {
 		// Get the keyboard message from the PS/2 controller
-		let keyboard_message = super::controller::receive_data();
 		if PRINT_DEBUG_MESSAGES {
 			println!("[PS2Keyboard({:?})] recieved message: {:#X}", self.state, keyboard_message);
 		}
 
 		// We first check if this is a response to a command we queued, and handle the response if
 		// it is
-		self.handle_command_queue(keyboard_message);
+		let queue_empty = self.command_queue.handle_message(keyboard_message);
 
 		// If there no commands on in the queue then we need to handle the message based on the
 		// current state. On the other hand, if the receiving of this message acknowledged the last
 		// command in the queue then we just finished a transition from one state to another and
 		// need to take the relevant action for the new state.
-		if self.command_queue_length == 0 {
+		if queue_empty {
 			match self.state {
 				PS2KeyboardState::Uninitialized => {
 					// We are in this state following a keyboard reset command which did not go
@@ -146,8 +122,8 @@ impl PS2KeyboardDriver {
 					assert!(keyboard_message == KEYBOARD_MSG_SELF_TEST_PASSED);
 					// We then begin identifying the keyboard by first disabling scanning so it
 					// won't interfere with the identification result and sending the identify cmd
-					self.queue_command(PS2KeyboardCommand::DisableScanning);
-					self.queue_command(PS2KeyboardCommand::IdentifyKeyboard);
+					self.command_queue.queue(PS2KeyboardCommand::DisableScanning);
+					self.command_queue.queue(PS2KeyboardCommand::IdentifyKeyboard);
 					self.state = PS2KeyboardState::Identifying;
 				},
 				PS2KeyboardState::Identifying => {
@@ -173,20 +149,20 @@ impl PS2KeyboardDriver {
 					assert!(type_length == 2 && keyboard_type == [0xAB, 0x83]);
 
 					// We then initialize the keyboard, by first setting the scan code set to set 2
-					self.queue_command(PS2KeyboardCommand::SetScanCodeSet(2));
+					self.command_queue.queue(PS2KeyboardCommand::SetScanCodeSet(2));
 					// We then set the typematic byte to some defaults
-					self.queue_command(PS2KeyboardCommand::SetTypematicByte {
+					self.command_queue.queue(PS2KeyboardCommand::SetTypematicByte {
 						delay: TYPEMATIC_REPEAT_DELAY,
 						rate: TYPEMATIC_REPEAT_RATE
 					});
 					// We then set the keyboard LEDs to a known state
-					self.queue_command(PS2KeyboardCommand::SetLEDs {
+					self.command_queue.queue(PS2KeyboardCommand::SetLEDs {
 						number_lock: true,
 						caps_lock: false,
 						scroll_lock: false,
 					});
 					// And finally we re-enable scanning
-					self.queue_command(PS2KeyboardCommand::EnableScanning);
+					self.command_queue.queue(PS2KeyboardCommand::EnableScanning);
 					self.state = PS2KeyboardState::Initialized;
 				},
 				PS2KeyboardState::Initialized => {
@@ -309,79 +285,6 @@ impl PS2KeyboardDriver {
 			}
 		}
 	}
-
-	/// Queues the specified command and dispatches it immediately if it is the first in the queue
-	fn queue_command(&mut self, command: PS2KeyboardCommand) {
-		// Assert we have enough space left in the queue
-		assert!(self.command_queue_length < self.command_queue.len());
-
-		// If this is the first command in the queue we can dispatch it immediately
-		if self.command_queue_length == 0 {
-			self.send_command_to_keyboard(command);
-		}
-
-		// Append the command to the end of the queue and update the queue length
-		self.command_queue[self.command_queue_length] = command;
-		self.command_queue_length += 1;
-	}
-
-	/// Uses the provided keyboard message to update the command queue
-	fn handle_command_queue(&mut self, message: u8) {
-		// If no commands are queued this is not a response to a queued command
-		if self.command_queue_length == 0 {
-			return;
-		}
-
-		if message == KEYBOARD_MSG_RESEND {
-			// If this is a RESEND message, we retry the first command in the queue a few times
-			if self.command_retries < MAX_COMMAND_RETRIES {
-				self.command_retries += 1;
-				self.send_command_to_keyboard(self.command_queue[0]);
-			} else {
-				panic!("Keyboard({:?}): Failed to send command {:?} (Too many retries)", self.state,
-					self.command_queue[0]);
-			}
-		} else if message == KEYBOARD_MSG_ACK {
-			// If this is an acknowledge message, we first check if the command is also expect an
-			// ACK for the its data byte, in which case we need to discard the first ACK
-			if self.waiting_for_data_ack {
-				self.waiting_for_data_ack = false;
-				return;
-			}
-
-			// We reset the retry counter for the next command
-			self.command_retries = 0;
-
-			// We pop the first element in the queue by shifting all elements back one place
-			for i in 1..self.command_queue_length {
-				self.command_queue[i-1] = self.command_queue[i];
-			}
-
-			// We decrement the queue length
-			self.command_queue_length -= 1;
-
-			// If the queue is not empty, we dispatch the next command
-			if self.command_queue_length > 0 {
-				self.send_command_to_keyboard(self.command_queue[0]);
-			}
-		} else {
-			// If the queue is not empty, but the message we received is not an ACK or a RESEND, the
-			// command has a response byte which is discarded. This shouldn't happen(?)
-			panic!("[Keyboard({:?})] Discarded command result {:#X}", self.state, message);
-		}
-	}
-	
-	/// Sends the specified command to the keyboard
-	fn send_command_to_keyboard(&mut self, command: PS2KeyboardCommand) {
-		// We first send the command byte
-		super::controller::send_data(command.get_command_byte());
-		if let Some(data_byte) = command.get_data_byte() {
-			// If the command also has a data byte, we send it as well and remember we need to
-			// ignore the first ACK because the keyboard will also ACK the data byte
-			super::controller::send_data(data_byte);
-			self.waiting_for_data_ack = true;
-		}
-	}
 }
 
 /// The current keyboard state. We should only get one keyboard interrupt at a time, so exclusivity
@@ -389,8 +292,8 @@ impl PS2KeyboardDriver {
 static KEYBOARD_DRIVER: ExclusiveCell<PS2KeyboardDriver> = ExclusiveCell::new(PS2KeyboardDriver::new());
 
 /// Handles an interrupt from the PS/2 keyboard (should only be called when an interrupt happens)
-pub unsafe fn handle_interrupt() {
-	KEYBOARD_DRIVER.acquire().handle_interrupt();
+pub fn handle_interrupt(keyboard_message: u8) {
+	KEYBOARD_DRIVER.acquire().handle_interrupt(keyboard_message);
 }
 
 /// Converts a simple 1-byte set 2 scan code to the corresponding key code

@@ -158,7 +158,7 @@ unsafe extern "cdecl" fn interrupt_handler(interrupt_number: u32, error_code: u3
     let interrupt_number = interrupt_number as u8;
     
     if interrupt_number >= pic_8259a::PIC_IRQ_OFFSET
-        && interrupt_number < pic_8259a::PIC_IRQ_OFFSET + 8 {
+        && interrupt_number < pic_8259a::PIC_IRQ_OFFSET + 16 {
         let irq = interrupt_number - pic_8259a::PIC_IRQ_OFFSET;
         if pic_8259a::handle_spurious_irq(irq) {
             println!("WARNING: Spurious PIC IRQ {}!", irq);
@@ -167,10 +167,8 @@ unsafe extern "cdecl" fn interrupt_handler(interrupt_number: u32, error_code: u3
         
         if irq == 0 {
             pit_8254::handle_interrupt();
-        } else if irq == 1 {
-            crate::ps2::keyboard::handle_interrupt();
-        } else if irq == 12 {
-            unimplemented!("Mouse interrupt");
+        } else if irq == 1 || irq == 12 {
+            crate::ps2::controller::handle_interrupt();
         } else {
             println!("PIC IRQ {}", irq);
         }
@@ -204,7 +202,7 @@ unsafe extern "cdecl" fn interrupt_handler(interrupt_number: u32, error_code: u3
         19 => panic!("SIMD Floating-Point Exception (#XM)"),
         20 => panic!("Virtualization Exception (#VE)"),
         21 => panic!("Control Protection Exception (#CP)"),
-        _ => panic!("Unrecognized Interrupt")
+        _ => panic!("Unrecognized Interrupt {}", interrupt_number)
     }
 }
 

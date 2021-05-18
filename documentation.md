@@ -17,7 +17,7 @@ The first stage of the bootloader, stage 0, resides at `bootloader/src/stage0/`,
 The second stage of the bootloader resides at `bootloader/src/`. This stage initializes the serial ports for logging, builds up a physical memory map using the E820 BIOS call, reads the kernel from disk, sets up paging and a stack for the kernel, and finally jumps to the kernel.
 
 ## The Kernel
-Execution begins at `kernel/src/main.rs` which first initializes a memory manager which is responisble for kernel allocations (both virtual and physical).Then a new GDT is initiailized to replace the one that was set up by stage 0 of the bootloader. A minimal TSS is also set up which is needed for stack switching when handling interrupts while in ring 0. Then the IDT is set up, the 8259A PIC is set up, and interrupts are enabled. The PS/2 controller is then initialized which in turn initializes the PS/2 keyboard driver if such a keyboard is connected.
+Execution begins at `kernel/src/main.rs` which first initializes a memory manager which is responisble for kernel allocations (both virtual and physical).Then a new GDT is initiailized to replace the one that was set up by stage 0 of the bootloader. A minimal TSS is also set up which is needed for stack switching when handling interrupts while in ring 0. Then the IDT is set up, the 8259A PIC is set up, and interrupts are enabled. The PS/2 controller is then initialized which in turn initializes the PS/2 keyboard and PS/2 mouse drivers if those devices are connected.
 
 ### Memory Manager
 - Virtual memory is currently allocated using a simple bump allocator, with a free pages linked list. The map of the kernel's virtual address space is documented at `kernel/virt_mem_map.txt`.
