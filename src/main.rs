@@ -165,7 +165,7 @@ fn main() -> Result<(), Box<dyn Error>>{
     std::fs::write(Path::new("build").join("bootloader.flat"), image_bytes)?;
 
     // Assemble stage0
-    let bootfile = Path::new("build").canonicalize()?.join("new_os.boot");
+    let bootfile = Path::new("build").canonicalize()?.join("explore_os.boot");
     if !Command::new("nasm").current_dir(&bootloader_src_dir.join("stage0")).args(&[
             "-f", "bin",
             "-o", bootfile.to_str().unwrap(),
@@ -219,7 +219,7 @@ fn main() -> Result<(), Box<dyn Error>>{
     // Append the kernel image to the os image
     os_image.extend(kernel_image);
     // Write out the os image
-    std::fs::write(Path::new("build").join("new_os.img"), os_image)?;
+    std::fs::write(Path::new("build").join("explore_os.img"), os_image)?;
     
     Ok(())
 }

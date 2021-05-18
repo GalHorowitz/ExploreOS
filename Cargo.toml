@@ -1,5 +1,5 @@
 [package]
-name = "new_os"
+name = "explore_os"
 version = "0.1.0"
 authors = ["Gal Horowitz <galush.horowitz@gmail.com>"]
 edition = "2018"

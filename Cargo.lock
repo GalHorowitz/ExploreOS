@@ -5,7 +5,7 @@ name = "elf_parser"
 version = "0.1.0"
 
 [[package]]
-name = "new_os"
+name = "explore_os"
 version = "0.1.0"
 dependencies = [
  "elf_parser",
