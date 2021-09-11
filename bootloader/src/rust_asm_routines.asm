@@ -1,5 +1,5 @@
 ; This file contains routines and trampolines to switch between 16-bit and 32-bit (TODO: 64 bit)
-; modes. We can't do this in inline assembly because we can't switch the bitness of the intsructions
+; modes. We can't do this in inline assembly because we can't switch the bitness of the instructions
 [bits 32]
 
 global invoke_realmode_interrupt
