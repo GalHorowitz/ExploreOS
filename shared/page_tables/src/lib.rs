@@ -23,6 +23,8 @@ pub trait PhysMem {
     /// at least `size` bytes.
     /// A translation might require remapping of virtual memory, which only happens if `page_dir`
     /// is not `None`.
+    ///
+    /// ### Safety
     /// The address is only guaranteed to be valid until the next call to `translate_phys`.
     unsafe fn translate_phys(&mut self, page_dir: Option<&mut PageDirectory>, phys_addr: PhysAddr,
         size: usize) -> Option<*mut u8>; // TODO: May need to think about this, if the address is
@@ -76,6 +78,9 @@ impl PageDirectory {
     }
 
     /// Creates a page directory from an existing CR3
+    ///
+    /// ### Safety
+    /// The CR3 value must be a valid page-directory physical address
     pub unsafe fn from_cr3(cr3: u32) -> Self {
         // We mask off the lower 12 bits of cr3 to get the address of the page directory
         PageDirectory { directory: PhysAddr(cr3 & !0xfff) }
@@ -137,7 +142,7 @@ impl PageDirectory {
             // Check if we need to initialize
             if let Some(init_bytes) = &init {
                 // Calculate the virtul address of the page
-                let page_vaddr = page << 12 as usize;
+                let page_vaddr = page << 12;
                 // Calculate the offset of the page from the original address
                 let page_offset: usize = (page_vaddr - virt_addr.0) as usize;
 
@@ -147,9 +152,9 @@ impl PageDirectory {
                     core::slice::from_raw_parts_mut(page_ptr, 4096)
                 };
 
-                for byte_offset in 0..4096 {
+                for (byte_offset, byte) in page_slice.iter_mut().enumerate() {
                     // For each byte in the page, get its initial value from the closure
-                    page_slice[byte_offset] = init_bytes(page_offset + byte_offset);
+                    *byte = init_bytes(page_offset + byte_offset);
                 }
             }
 
@@ -205,6 +210,9 @@ impl PageDirectory {
     /// Set the page table entry for `virt_addr` to be `raw`. If `update` is false, this will not
     /// overwrite an existing mapping. If `create` is false, a page table won't be created if it
     /// doesn't exist (and the mapping will not occur).
+    ///
+    /// ### Safety
+    /// `raw` must be a valid page table entry
     #[must_use]
     pub unsafe fn map_raw(&mut self, phys_mem: &mut impl PhysMem, virt_addr: VirtAddr, raw: u32,
         update: bool, create: bool) -> Option<()> {
@@ -271,6 +279,9 @@ impl PageDirectory {
     /// virtual address `page_table_vaddr`.
     /// 
     /// The function will return `None` if the mapping was not updated for any reason.
+    ///
+    /// ### Safety
+    /// `raw` must be a valid page table entry
     #[must_use]
     pub unsafe fn map_raw_directly(&mut self, virt_addr: VirtAddr, raw: u32, update: bool,
         page_table_vaddr: VirtAddr) -> Option<()> {

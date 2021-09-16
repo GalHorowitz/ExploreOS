@@ -7,15 +7,17 @@
 /// libc `memset` implementation in Rust
 /// 
 /// ### Parameters
-/// 
 /// * `s` - Pointer to memory to set
 /// * `c` - Bytes to fill memory with
 /// * `n` - Number of bytes to set
+///
+/// ### Safety
+/// `s` must be valid for writes of `n` bytes
 #[no_mangle]
 pub unsafe extern fn memset(s: *mut u8, c: i32, n: usize) -> *mut u8 {
     let mut i = 0;
     while i < n {
-        *s.offset(i as isize) = c as u8;
+        *s.add(i) = c as u8;
         i += 1;
     }
     s
@@ -24,15 +26,18 @@ pub unsafe extern fn memset(s: *mut u8, c: i32, n: usize) -> *mut u8 {
 /// libc `memcpy` implementation in Rust
 /// 
 /// ### Parameters
-/// 
 /// * `dest` - Pointer to memory to copy to
 /// * `src`  - Pointer to memory to copy from
 /// * `n`    - Number of bytes to copy
+///
+/// ### Safety
+/// The source and destination buffers must not overlap. `dest` must be valid for writes of `n`
+/// bytes and `src` must be valid for reads of `n` bytes
 #[no_mangle]
 pub unsafe extern fn memcpy(dest: *mut u8, src: *const u8, n: usize) -> *mut u8 {
     let mut i = 0;
     while i < n {
-        *dest.offset(i as isize) = *src.offset(i as isize);
+        *dest.add(i) = *src.add(i);
         i += 1;
     }
     dest
@@ -41,22 +46,24 @@ pub unsafe extern fn memcpy(dest: *mut u8, src: *const u8, n: usize) -> *mut u8 
 /// libc `memmove` implementation in Rust
 /// 
 /// ### Parameters
-/// 
 /// * `dest` - Pointer to memory to copy to
 /// * `src`  - Pointer to memory to copy from
 /// * `n`    - Number of bytes to copy
+///
+/// ### Safety
+/// `dest` must be valid for writes of `n` bytes and `src` must be valid for reads of `n` bytes
 #[no_mangle]
 pub unsafe extern fn memmove(dest: *mut u8, src: *const u8, n: usize) -> *mut u8 {
     // If the buffers do not overlap, or the overlap is such that src comes first,
     // a normal memcpy will work
-    if src >= (dest as *const u8) || src.offset(n as isize) < (dest as *const u8) {
+    if src >= (dest as *const u8) || src.add(n) < (dest as *const u8) {
         return memcpy(dest, src, n);
     }
 
     // A backward copy handles the case where there is overlap and dest comes first
     let mut i = n;
     while i > 0 {
-        *dest.offset(i as isize) = *src.offset(i as isize);
+        *dest.add(i) = *src.add(i);
         i -= 1;
     }
 
@@ -66,16 +73,18 @@ pub unsafe extern fn memmove(dest: *mut u8, src: *const u8, n: usize) -> *mut u8
 /// libc `memcmp` implementation in Rust
 /// 
 /// ### Parameters
-/// 
 /// * `s1` - Pointer to memory to compare with `s2`
 /// * `s2` - Pointer to memory to compare with `s1`
 /// * `n`  - Number of bytes to compare
+///
+/// ### Safety
+/// `s1` and `s2` must be valid for reads of `n` bytes
 #[no_mangle]
 pub unsafe extern fn memcmp(s1: *const u8, s2: *const u8, n: usize) -> i32 {
     let mut i = 0;
     while i < n {
-        let b1 = *s1.offset(i as isize);
-        let b2 = *s2.offset(i as isize);
+        let b1 = *s1.add(i);
+        let b2 = *s2.add(i);
         if b1 != b2 {
             return (b2 as i32) - (b1 as i32);
         }
@@ -87,11 +96,13 @@ pub unsafe extern fn memcmp(s1: *const u8, s2: *const u8, n: usize) -> i32 {
 /// `bcmp` implementation in Rust
 /// 
 /// ### Parameters
-/// 
 /// * `s1` - Pointer to byte sequence to compare with `s2`
 /// * `s2` - Pointer to byte sequence to compare with `s1`
 /// * `n`  - Number of bytes to compare
+///
+/// ### Safety
+/// `s1` and `s2` must be valid for reads of `n` bytes
 #[no_mangle]
 pub unsafe extern fn bcmp(s1: *const u8, s2: *const u8, n: usize) -> i32 {
-    return memcmp(s1, s2, n);
+    memcmp(s1, s2, n)
 }

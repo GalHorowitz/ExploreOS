@@ -1,4 +1,4 @@
-use crate::screen::print;
+//! 8254 PIT controller
 
 // Reference: https://www.scs.stanford.edu/10wi-cs140/pintos/specs/8254.pdf
 

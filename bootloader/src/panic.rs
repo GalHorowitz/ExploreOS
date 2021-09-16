@@ -1,7 +1,7 @@
 //! Basic panic handler which prints the message to serial and halts
 
 use core::panic::PanicInfo;
-use serial::print;
+use serial::{print, println};
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
@@ -14,7 +14,7 @@ fn panic(info: &PanicInfo) -> ! {
     if let Some(msg) = info.message() {
         print!(" {}", msg);
     }
-    print!("\n");    
+    println!();    
 
-    cpu::halt();
+    unsafe { cpu::halt(); }
 }

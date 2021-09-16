@@ -5,3 +5,4 @@
 *.code-workspace
 bochs_serial.out
 qemu_log.txt
+bochs_disk.img

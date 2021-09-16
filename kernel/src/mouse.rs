@@ -41,11 +41,13 @@ pub fn mouse_event(left_down: bool, right_down: bool, middle_down: bool, fourth_
 	mouse_state.middle_button_down = middle_down;
 	mouse_state.fourth_button_down = fourth_down;
 	mouse_state.fifth_button_down = fifth_down;
-	if left_down {
+	
+	if left_down { // TODO: DEBUG CODE
 		mouse_state.x += (x_delta as f32)/20.;
 	}
 	mouse_state.y += (y_delta as f32)/20.;
 
+	// TODO: DEBUG CODE
 	crate::screen::set_cursor_offset(mouse_state.x as usize);
 	// crate::println!("X: {} ({})", mouse_state.x as usize, mouse_state.x);
 }

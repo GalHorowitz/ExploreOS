@@ -91,7 +91,7 @@ impl<'a> ElfParser<'a> {
 
     /// Invokes the provided closure with the details of every LOAD segment in the ELF
     /// The closure arguments are
-    /// (virtual address, virtual size, raw init bytes, segment flags, read, write, exec)
+    /// (virtual address, virtual size, raw init bytes, read, write, exec)
     pub fn for_segment<F>(&self, mut func: F) -> Option<()>
         where F: FnMut(usize, usize, &[u8], bool, bool, bool) -> Option<()> {
         let bytes = self.raw_bytes;

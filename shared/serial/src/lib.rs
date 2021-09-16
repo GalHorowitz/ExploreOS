@@ -58,7 +58,7 @@ impl SerialPort {
 
             // We set the baud rate divisor to 1, i.e. the baud rate is 115200
             // Set baud rate divisor low byte
-            cpu::out8(com_port + 0, 0x1);
+            cpu::out8(com_port, 0x1);
             // Set baud rate divisor high byte
             cpu::out8(com_port + 1, 0x0);
 

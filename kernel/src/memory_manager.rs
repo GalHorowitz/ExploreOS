@@ -1,8 +1,9 @@
-//! Responisble for physical and virtual memory management
+//! Responsible for physical and virtual memory management
 
 // TODO: Would it be better to just keep page tables mapped in permanently, the virtual addresses
 // stored in a table? It would be simpler and faster, but it would take up space in the virtual
 // address space, which is already limited.
+// TODO: More robust heap implementation
 
 use core::convert::TryInto;
 use core::sync::atomic::{AtomicUsize, Ordering};
@@ -21,7 +22,7 @@ use boot_args::{BootArgs, LAST_PAGE_TABLE_VADDR, KERNEL_ALLOCATIONS_BASE_VADDR};
 pub static PHYS_MEM: LockCell<Option<(PhysicalMemory, PageDirectory)>> = LockCell::new(None);
 
 /// A struct that implements `PhysMem` for use in mappings
-pub struct PhysicalMemory{
+pub struct PhysicalMemory {
     /// Actual usable ranges of physical memory
     memory_ranges: RangeSet,
 
@@ -99,7 +100,7 @@ impl PhysMem for PhysicalMemory {
         let addr = self.memory_ranges.allocate(layout.size().try_into().ok()?,
             layout.align().try_into().ok()?);
         
-        addr.map(|x| PhysAddr(x))
+        addr.map(PhysAddr)
     }
 
     fn release_phys_mem(&mut self, phys_addr: PhysAddr, size: usize) {
@@ -297,6 +298,7 @@ impl GlobalAllocator {
             }
         }
         
+        assert!(core::mem::size_of::<FreePagesEntry>() <= 0x1000);
         // Save the list entry at the start of the allocation
         unsafe {
             core::ptr::write(new_entry_ptr, new_entry);
@@ -325,7 +327,7 @@ pub fn init(boot_args: &BootArgs) {
     let mut pmem = PHYS_MEM.lock();
 
     // Get the CR3 set by the bootloader which is the base address of the page directory
-    let cr3 = cpu::get_cr3() as u32;
+    let cr3 = unsafe { cpu::get_cr3() } as u32;
 
     // Setup the physical memory based on the boot args
     let mut phys_mem = PhysicalMemory{

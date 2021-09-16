@@ -4,56 +4,73 @@
 #![feature(asm)]
 
 /// Reads a byte from the specified IO port `addr`
+///
+/// ### Safety
+/// If the CPL is greater than the IOPL this will cause a GPF
 #[inline]
 pub unsafe fn in8(addr: u16) -> u8 {
     let result: u8;
     asm!("in al, dx", out("al") result, in("dx") addr, options(nomem, preserves_flags, nostack));
-    return result;
+    result
 }
 
 /// Reads a word from the specified IO port `addr`
+///
+/// ### Safety
+/// If the CPL is greater than the IOPL this will cause a GPF
 #[inline]
 pub unsafe fn in16(addr: u16) -> u16 {
     let result: u16;
     asm!("in ax, dx", out("ax") result, in("dx") addr, options(nomem, preserves_flags, nostack));
-    return result;
+    result
 }
 
 /// Writes `data` to the specified IO port `addr`
+///
+/// ### Safety
+/// If the CPL is greater than the IOPL this will cause a GPF
 #[inline]
 pub unsafe fn out8(addr: u16, data: u8) {
     asm!("out dx, al", in("al") data, in("dx") addr, options(nomem, preserves_flags, nostack));
 }
 
 /// Writes `data` to the specified IO port `addr`
+///
+/// ### Safety
+/// If the CPL is greater than the IOPL this will cause a GPF
 #[inline]
 pub unsafe fn out16(addr: u16, data: u16) {
     asm!("out dx, ax", in("ax") data, in("dx") addr, options(nomem, preserves_flags, nostack));
 }
 
 /// Invalidates TLB entries for the page of the address `addr`
+///
+/// ### Safety
+/// If the CPL is not zero this will cause a GPF
 #[inline]
 pub unsafe fn invlpg(addr: usize) {
     asm!("invlpg [{}]", in(reg) addr, options(preserves_flags, nostack));
 }
 
 /// Gets the value held in CR3
+///
+/// ### Safety
+/// If the CPL is not zero this will cause a GPF
 #[inline]
-pub fn get_cr3() -> usize {
+pub unsafe fn get_cr3() -> usize {
     let cr3: usize;
-    unsafe {
-        asm!("mov {}, cr3", out(reg) cr3, options(nomem, preserves_flags, nostack));
-    }
+    asm!("mov {}, cr3", out(reg) cr3, options(nomem, preserves_flags, nostack));
     cr3
 }
 
 /// Gets the value held in CR2
+///
+/// ### Safety
+/// If the CPL is not zero this will cause a GPF
 #[inline]
-pub fn get_cr2() -> usize {
+pub unsafe fn get_cr2() -> usize {
     let cr2: usize;
-    unsafe {
-        asm!("mov {}, cr2", out(reg) cr2, options(nomem, preserves_flags, nostack));
-    }
+    asm!("mov {}, cr2", out(reg) cr2, options(nomem, preserves_flags, nostack));
     cr2
 }
 
@@ -86,29 +103,34 @@ pub fn serializing_rdtsc() -> u64 {
 }
 
 /// Halts the cpu in a loop while servicing interrupts
+///
+/// ### Safety
+/// If the CPL is not zero this will cause a GPF
 #[inline]
-pub fn halt_and_service_interrupts() -> ! {
+pub unsafe fn halt_and_service_interrupts() -> ! {
     loop {
-        unsafe {
-            asm!("hlt", options(nomem, nostack));
-        }
+        asm!("hlt", options(nomem, nostack));
     }
 }
 
 /// Disables interrupts and halts the cpu
+///
+/// ### Safety
+/// If the CPL is not zero this will cause a GPF
 #[inline]
-pub fn halt() -> ! {
+pub unsafe fn halt() -> ! {
     loop {
-        unsafe {
-            asm!("
-                cli
-                hlt
-            ", options(nomem, nostack));
-        }
+        asm!("
+            cli
+            hlt
+        ", options(nomem, nostack));
     }
 }
 
 /// Loads the IDTR with the table at `base` with whose last byte is at `base+limit`
+///
+/// ### Safety
+/// If the CPL is not zero this will cause a GPF
 #[inline]
 pub unsafe fn load_idt(base: u32, limit: u16) {
     // LIDT expects a 6-byte memory location [limit:base] so we just push it on the stack
@@ -122,6 +144,10 @@ pub unsafe fn load_idt(base: u32, limit: u16) {
 }
 
 /// Loads the GDTR with the table at `base` with whose last byte is at `base+limit`
+///
+/// ### Safety
+/// If the CPL is not zero this will cause a GPF. The new GDT must contain code and data segments
+/// for this and the calling function or else execution cannot continue
 #[inline]
 pub unsafe fn load_gdt(base: u32, limit: u16) {
     // LGDT expects a 6-byte memory location [limit:base] so we just push it on the stack
@@ -134,6 +160,11 @@ pub unsafe fn load_gdt(base: u32, limit: u16) {
     ", in("ebx") base, in("ax") limit, options(nomem, preserves_flags));
 }
 
+/// Loads the Task Register with the GDT segment `segment_selector`
+///
+/// ### Safety
+/// If the CPL is not zero this will cause a GPF. The segment selector must point to an already
+/// loaded TSS descriptor in the GDT
 #[inline]
 pub unsafe fn load_task_register(segment_selector: u16) {
     asm!("ltr {:x}", in(reg) segment_selector, options(nomem, preserves_flags, nostack));
@@ -141,15 +172,19 @@ pub unsafe fn load_task_register(segment_selector: u16) {
 
 /// Clears the interrupt flag (IF) in the EFLAGS register, this causes the processor to ignore
 /// maskable hardware interrupts
+///
+/// ### Safety
+/// If the CPL is greater than the IOPL this will cause a GPF
 #[inline]
-pub fn cli() {
-    unsafe {
-        asm!("cli", options(nomem, nostack));
-    }
+pub unsafe fn cli() {
+    asm!("cli", options(nomem, nostack));
 }
 
 /// Sets the interrupt flag (IF) in the EFLAGS register, this allows the processor to respond to
 /// maskable hardware interrupts
+///
+/// ### Safety
+/// If the CPL is greater than the IOPL this will cause a GPF. An IDT must already be loaded
 #[inline]
 pub unsafe fn sti() {
     asm!("sti", options(nomem, nostack));
@@ -167,6 +202,11 @@ pub fn get_if() -> bool {
 ///
 /// IMPORTANT: The stack-switching is done using an `iret`, which only happens on a CPL change, so
 /// this should only be used in such a context
+///
+/// ### Safety
+/// The stack-switching is done using an `iret`, which only happens on a CPL change, so
+/// this should only be used in such a context. For further constraints, see the intel manual
+/// `iretd`
 #[inline]
 pub unsafe fn jump_to_ring0(eip: u32, cs_selector: u16, eflags: u32, esp: u32, ds_selector: u16)
     -> ! {

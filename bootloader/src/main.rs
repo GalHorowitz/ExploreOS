@@ -119,7 +119,7 @@ fn setup_kernel(boot_disk_id: u8, bootloader_size: u32) -> (u32, u32, u32, PhysA
         Some(())
     }).expect("Failed to load and map kernel");
 
-    let kernel_entry: u32 = kernel_elf.entry_point.try_into().ok()
+    let kernel_entry: u32 = kernel_elf.entry_point.try_into()
         .expect("Kernel entry is outside of 32-bit address range");
 
     // Map the kernel stack

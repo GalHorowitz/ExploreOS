@@ -161,7 +161,7 @@ fn main() -> Result<(), Box<dyn Error>>{
         return Err("Unexpected bootloader base address".into());
     }
 
-    // Write out the flattened bootloader image
+    // Write out the flattened bootloader image (used by stage0.asm INCBIN)
     std::fs::write(Path::new("build").join("bootloader.flat"), image_bytes)?;
 
     // Assemble stage0

@@ -31,7 +31,7 @@ impl PhysMem for PhysicalMemory {
     fn allocate_phys_mem(&mut self, layout: Layout) -> Option<PhysAddr> {
         let addr = self.0.allocate(layout.size().try_into().ok()?, layout.align().try_into().ok()?);
 
-        addr.map(|x| PhysAddr(x))
+        addr.map(PhysAddr)
     }
 
     fn release_phys_mem(&mut self, phys_addr: PhysAddr, size: usize) {

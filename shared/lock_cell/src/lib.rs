@@ -6,7 +6,7 @@ use core::cell::UnsafeCell;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::ops::{Drop, Deref, DerefMut};
 
-/// Spin lock for interior mutability.
+/// Spin lock for interior mutability
 pub struct LockCell<T> {
     /// The actuall cell, for interior mutability
     cell: UnsafeCell<T>,
@@ -50,7 +50,7 @@ impl<T> LockCell<T>  {
         // lock and interrupts were already unmasked
         let unmask_interrupts = if self.interruptable && cpu::get_if() {
             // If interrupts are unmaksed, we mask them for the duration of the critical section
-            cpu::cli();
+            unsafe { cpu::cli(); }
             true
         } else {
             false
