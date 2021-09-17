@@ -81,7 +81,7 @@ pub fn get_eflags() -> u32 {
     unsafe {
         asm!("
             pushfd
-            pop {}
+            pop {:e}
         ", out(reg) eflags, options(nomem, preserves_flags));
     }
     eflags
@@ -135,12 +135,12 @@ pub unsafe fn halt() -> ! {
 pub unsafe fn load_idt(base: u32, limit: u16) {
     // LIDT expects a 6-byte memory location [limit:base] so we just push it on the stack
     asm!("
-        push ebx
-        push ax
+        push {0:e}
+        push {1:x}
         lidt [esp]
-        pop ax
-        pop ebx
-    ", in("ebx") base, in("ax") limit, options(nomem, preserves_flags));
+        pop {1:x}
+        pop {0:e}
+    ", in(reg) base, in(reg) limit, options(nomem, preserves_flags));
 }
 
 /// Loads the GDTR with the table at `base` with whose last byte is at `base+limit`
@@ -152,12 +152,12 @@ pub unsafe fn load_idt(base: u32, limit: u16) {
 pub unsafe fn load_gdt(base: u32, limit: u16) {
     // LGDT expects a 6-byte memory location [limit:base] so we just push it on the stack
     asm!("
-        push ebx
-        push ax
+        push {0:e}
+        push {1:x}
         lgdt [esp]
-        pop ax
-        pop ebx
-    ", in("ebx") base, in("ax") limit, options(nomem, preserves_flags));
+        pop {1:x}
+        pop {0:e}
+    ", in(reg) base, in(reg) limit, options(nomem, preserves_flags));
 }
 
 /// Loads the Task Register with the GDT segment `segment_selector`
@@ -214,17 +214,17 @@ pub unsafe fn jump_to_ring0(eip: u32, cs_selector: u16, eflags: u32, esp: u32, d
     let ds_selector = ds_selector as u32;
     asm!("
             cli         // Disable interrutps during segment selector switching
-            mov ds, {0} 
-            mov es, {0}
-            mov fs, {0}
-            mov gs, {0}
+            mov ds, {0:x} 
+            mov es, {0:x}
+            mov fs, {0:x}
+            mov gs, {0:x}
 
             // Setup fake interrupt stack frame
-            push {0}    // SS selector
-            push {1}    // ESP
-            push {2}    // EFLAGS
-            push {3}    // CS selector
-            push {4}    // EIP
+            push {0:e}    // SS selector (high 16-bits discarded)
+            push {1:e}    // ESP
+            push {2:e}    // EFLAGS
+            push {3:e}    // CS selector (high 16-bits discarded)
+            push {4:e}    // EIP
             iretd
         ", in(reg) ds_selector, in(reg) esp, in(reg) eflags, in(reg) cs_selector, in(reg) eip,
         options(noreturn));
