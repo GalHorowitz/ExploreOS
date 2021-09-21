@@ -260,7 +260,6 @@ macro_rules! int_asm_err_code {
                 push ecx                // Push arg 2: the error code
                 push dword ptr {int_no} // Push arg 1: the interrupt number
                 call {int_handler}      // Call the handler function
-                add esp, 8              // Pop the interrupt number and the error code
                 add esp, 12             // Pop the interrupt number, the error code, and the ret eip
                 pop edx                 // Restore caller-saved registers
                 pop ecx
