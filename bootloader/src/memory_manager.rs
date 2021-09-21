@@ -6,13 +6,12 @@ use core::convert::TryInto;
 use range_set::{RangeSet, InclusiveRange};
 use core::alloc::{GlobalAlloc, Layout};
 use lock_cell::LockCell;
-use page_tables::{PageDirectory, PhysAddr, PhysMem};
+use page_tables::{PhysAddr, PhysMem};
 
 pub struct PhysicalMemory(pub RangeSet);
 
 impl PhysMem for PhysicalMemory {
-    unsafe fn translate_phys(&mut self, _: Option<&mut PageDirectory>, phys_addr: PhysAddr,
-        size: usize) -> Option<*mut u8> {
+    unsafe fn translate_phys(&mut self, phys_addr: PhysAddr, size: usize) -> Option<*mut u8> {
         // No meaning for a ptr to be valid for 0 bytes
         if size == 0 {
             return None;

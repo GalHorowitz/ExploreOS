@@ -20,14 +20,13 @@ pub struct VirtAddr(pub u32);
 
 pub trait PhysMem {
     /// If successful, returns a virtual address which maps to the physical address and is valid for
-    /// at least `size` bytes.
-    /// A translation might require remapping of virtual memory, which only happens if `page_dir`
-    /// is not `None`.
+    /// at least `size` bytes. The entire span must reside in a single physical page, or else the
+    /// function will not succeed 
     ///
     /// ### Safety
     /// The address is only guaranteed to be valid until the next call to `translate_phys`.
-    unsafe fn translate_phys(&mut self, page_dir: Option<&mut PageDirectory>, phys_addr: PhysAddr,
-        size: usize) -> Option<*mut u8>; // TODO: May need to think about this, if the address is
+    unsafe fn translate_phys(&mut self, phys_addr: PhysAddr, size: usize) -> Option<*mut u8>;
+    // TODO: May need to think about this, if the address is
     // only valid until the next call to `translate_phys`, this is not thread-safe. Do we need to
     // worry about this, or are page mappings only ever made in a single context at a time?
 
@@ -37,17 +36,15 @@ pub trait PhysMem {
     /// Releases physical memory allocated with `allocate_phys_mem`
     fn release_phys_mem(&mut self, phys_addr: PhysAddr, size: usize);
 
-    /// Same as `allocate_phys_mem` except the memory is also zeroed. A reference to `page_dir` is
-    /// required if the zero-ing of memory would require to map the memory in.
+    /// Same as `allocate_phys_mem` except the memory is also zeroed.
     /// Calls `translate_phys`, so past translations are invalidated.
-    fn allocate_zeroed_phys_mem(&mut self, page_dir: Option<&mut PageDirectory>, layout: Layout)
-        -> Option<PhysAddr> {
+    fn allocate_zeroed_phys_mem(&mut self, layout: Layout) -> Option<PhysAddr> {
         // Allocate the memory
         let phys_addr = self.allocate_phys_mem(layout)?;
 
         unsafe {
             // Get a virtual address to the allocation
-            let virt_addr = self.translate_phys(page_dir, phys_addr, layout.size()).or_else(|| {
+            let virt_addr = self.translate_phys(phys_addr, layout.size()).or_else(|| {
                 // Translation of the address failed and so we can not zero the memory, but before
                 // we exit with failure, we need to release the physical memory we allocated
                 self.release_phys_mem(phys_addr, layout.size());
@@ -69,11 +66,11 @@ pub struct PageDirectory {
 }
 
 impl PageDirectory {
-    // Creates a new empty page table
+    // Creates a new empty page directory
     pub fn new(phys_mem: &mut impl PhysMem) -> Option<Self> {
         // Allocate a page-aligned page directory
         let directory_layout = Layout::from_size_align(4096, 4096).unwrap();
-        let directory = phys_mem.allocate_zeroed_phys_mem(None, directory_layout)?;
+        let directory = phys_mem.allocate_zeroed_phys_mem(directory_layout)?;
         Some(PageDirectory { directory })
     }
 
@@ -93,35 +90,40 @@ impl PageDirectory {
 
     /// Maps at least `size` bytes at virtual address `virt_addr` to physical memory with permissions
     /// `write` and `user`.
-    /// In practice, this maps all the pages that containg the `size` bytes.
+    /// In practice, this maps all the pages that contain the `size` bytes.
     /// The bytes are uninitialized.
+    /// Returns a tuple containing the virtual address of the first page and the number of pages
+    /// mapped
     #[must_use]
     pub fn map(&mut self, phys_mem: &mut impl PhysMem, virt_addr: VirtAddr, size: u32,
-        write: bool, user: bool) -> Option<()> {
+        write: bool, user: bool) -> Option<(VirtAddr, u32)> {
         self.map_internal(phys_mem, virt_addr, size, write, user, None::<fn(usize) -> u8>)
     }
 
     /// Maps at least `size` bytes at virtual address `virt_addr` to physical memory with permissions
     /// `write` and `user`.
-    /// In practice, this maps all the pages that containg the `size` bytes.
+    /// In practice, this maps all the pages that contain the `size` bytes.
     /// Each byte in the pages containing the requested bytes will be initialized by calling `init`
     /// with its offset.
+    /// Returns a tuple containing the virtual address of the first page and the number of pages
+    /// mapped
     #[must_use]
     pub fn map_init<F>(&mut self, phys_mem: &mut impl PhysMem, virt_addr: VirtAddr,
-        size: u32, write: bool, user: bool, init: F) -> Option<()>
+        size: u32, write: bool, user: bool, init: F) -> Option<(VirtAddr, u32)>
         where F: Fn(usize) -> u8 {
         self.map_internal(phys_mem, virt_addr, size, write, user, Some(init))
     }
 
     /// Maps at least `size` bytes at virtual address `virt_addr` to physical memory with permissions
     /// `write` and `user`.
-    /// In practice, this maps all the pages that containg the `size` bytes.
-    /// 
+    /// In practice, this maps all the pages that contain the `size` bytes.
     /// If `init` is not None, Each byte in the pages containing the requested bytes will be
     /// initialized by calling `init` with its offset.
+    /// Returns a tuple containing the virtual address of the first page and the number of pages
+    /// mapped
     #[must_use]
     fn map_internal<F>(&mut self, phys_mem: &mut impl PhysMem, virt_addr: VirtAddr, size: u32,
-        write: bool, user: bool, init: Option<F>) -> Option<()> 
+        write: bool, user: bool, init: Option<F>) -> Option<(VirtAddr, u32)> 
         where F: Fn(usize) -> u8 {
         // Make sure the size is not zero and that the virtual address is page-aligned
         if size == 0 || virt_addr.0 & 0xfff != 0 {
@@ -148,7 +150,7 @@ impl PageDirectory {
 
                 // Get a pointer to the memory we just allocated for the page
                 let page_slice = unsafe { 
-                    let page_ptr = phys_mem.translate_phys(Some(self), physical_page, 4096)?;
+                    let page_ptr = phys_mem.translate_phys(physical_page, 4096)?;
                     core::slice::from_raw_parts_mut(page_ptr, 4096)
                 };
 
@@ -164,7 +166,7 @@ impl PageDirectory {
                 true)?;
         }
 
-        Some(())
+        Some((virt_addr, last_addr_page + 1 - first_addr_page))
     }
 
     /// Maps the virtual page at `virt_addr` to the physical page at `phys_addr` with the specified
@@ -228,9 +230,10 @@ impl PageDirectory {
 
         // Compute the physical address of the PDE
         let directory_entry_paddr = PhysAddr(self.directory.0 + directory_index * 4);
+
         // Get the entry in the directory by translating the physical address to a virtual one
         let mut directory_entry = 
-            *(phys_mem.translate_phys(Some(self), directory_entry_paddr, 4)? as *const u32);
+            *(phys_mem.translate_phys(directory_entry_paddr, 4)? as *const u32);
 
         // Check if the PDE is not present (i.e. the page table doesn't exist)
         if (directory_entry & PAGE_ENTRY_PRESENT) == 0 {
@@ -242,18 +245,18 @@ impl PageDirectory {
 
             // We need to add a new page table, so we allocate an aligned page
             let table_layout = Layout::from_size_align(4096, 4096).unwrap();
-            let new_table = phys_mem.allocate_zeroed_phys_mem(Some(self), table_layout)?;
+            let new_table = phys_mem.allocate_zeroed_phys_mem(table_layout)?;
 
             // Update the PDE
             directory_entry = new_table.0 | PAGE_ENTRY_USER | PAGE_ENTRY_WRITE | PAGE_ENTRY_PRESENT;
-            let entry_vaddr = phys_mem.translate_phys(Some(self), directory_entry_paddr, 4)?;
+            let entry_vaddr = phys_mem.translate_phys(directory_entry_paddr, 4)?;
             *(entry_vaddr as *mut u32) = directory_entry;
         }
 
         // Compute the physical address of the PTE
         let table_entry_paddr = PhysAddr((directory_entry & !0xfff) + table_index * 4);
         // Translate it into a virtual address
-        let table_entry_vaddr = phys_mem.translate_phys(Some(self), table_entry_paddr, 4)?;
+        let table_entry_vaddr = phys_mem.translate_phys(table_entry_paddr, 4)?;
         // Get the entry in the table
         let table_entry = *(table_entry_vaddr as *const u32);
 
@@ -283,7 +286,7 @@ impl PageDirectory {
     /// ### Safety
     /// `raw` must be a valid page table entry
     #[must_use]
-    pub unsafe fn map_raw_directly(&mut self, virt_addr: VirtAddr, raw: u32, update: bool,
+    pub unsafe fn map_raw_directly(virt_addr: VirtAddr, raw: u32, update: bool,
         page_table_vaddr: VirtAddr) -> Option<()> {
         // Make sure that the requested virtual address is aligned to a page
         if (virt_addr.0 & 0xfff) != 0 {
@@ -331,7 +334,7 @@ impl PageDirectory {
         let directory_entry_paddr = PhysAddr(self.directory.0 + directory_index * 4);
         // Get the entry in the directory by translating the physical address to a virtual one
         let directory_entry = unsafe {
-            *(phys_mem.translate_phys(Some(self), directory_entry_paddr, 4)? as *const u32)
+            *(phys_mem.translate_phys(directory_entry_paddr, 4)? as *const u32)
         };
 
         // Check if the PDE is not present (i.e. the page table doesn't exist)
@@ -339,13 +342,13 @@ impl PageDirectory {
 
             // We need to add a new page table, so we allocate an aligned page
             let table_layout = Layout::from_size_align(4096, 4096).unwrap();
-            let new_table = phys_mem.allocate_zeroed_phys_mem(Some(self), table_layout)?;
+            let new_table = phys_mem.allocate_zeroed_phys_mem(table_layout)?;
 
             // Update the PDE
             let directory_entry =
                 new_table.0 | PAGE_ENTRY_USER | PAGE_ENTRY_WRITE | PAGE_ENTRY_PRESENT;
             unsafe {
-                let entry_vaddr = phys_mem.translate_phys(Some(self), directory_entry_paddr, 4)?;
+                let entry_vaddr = phys_mem.translate_phys(directory_entry_paddr, 4)?;
                 *(entry_vaddr as *mut u32) = directory_entry;
             }
 
@@ -389,8 +392,7 @@ impl PageDirectory {
         // Get the entry in the directory
         let directory_entry = unsafe { 
             // Translate the physical address into a virtual address
-            let directory_entry_vaddr = 
-                phys_mem.translate_phys(Some(self), directory_entry_paddr, 4)?;
+            let directory_entry_vaddr = phys_mem.translate_phys(directory_entry_paddr, 4)?;
 
             *(directory_entry_vaddr as *const u32)
         };
@@ -402,9 +404,7 @@ impl PageDirectory {
             // Compute the physical address of the PTE
             let table_entry_paddr = PhysAddr(table_paddr + table_index * 4);
             // Translate it into a virtual address
-            let table_entry_vaddr = unsafe {
-                phys_mem.translate_phys(Some(self), table_entry_paddr, 4)?
-            };
+            let table_entry_vaddr = unsafe { phys_mem.translate_phys(table_entry_paddr, 4)? };
             // Get the entry in the table
             let table_entry = unsafe { *(table_entry_vaddr as *const u32) };
 
@@ -421,8 +421,7 @@ impl PageDirectory {
         // We also need to mark the PDE as not present
         unsafe {
             // Translate the physical address into a virtual address
-            let directory_entry_vaddr = 
-                phys_mem.translate_phys(Some(self), directory_entry_paddr, 4)?;
+            let directory_entry_vaddr = phys_mem.translate_phys(directory_entry_paddr, 4)?;
 
             *(directory_entry_vaddr as *mut u32) = 0;
         }
@@ -444,8 +443,7 @@ impl PageDirectory {
         // Get the entry in the directory
         let directory_entry = unsafe {
             // Translate the physical address into a virtual address
-            let directory_entry_vaddr =
-                phys_mem.translate_phys(Some(self), directory_entry_paddr, 4)?;
+            let directory_entry_vaddr = phys_mem.translate_phys(directory_entry_paddr, 4)?;
             *(directory_entry_vaddr as *const u32)
         };
 
@@ -459,7 +457,7 @@ impl PageDirectory {
         // Get the entry in the table
         let table_entry = unsafe {
             // Translate the physical address into a virtual address
-            let table_entry_vaddr = phys_mem.translate_phys(Some(self), table_entry_paddr, 4)?;
+            let table_entry_vaddr = phys_mem.translate_phys(table_entry_paddr, 4)?;
             *(table_entry_vaddr as *const u32)
         };
 

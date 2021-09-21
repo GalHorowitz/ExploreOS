@@ -34,8 +34,7 @@ pub struct PhysicalMemory {
 }
 
 impl PhysMem for PhysicalMemory {
-    unsafe fn translate_phys(&mut self, page_dir: Option<&mut PageDirectory>, phys_addr: PhysAddr,
-        size: usize) -> Option<*mut u8> {
+    unsafe fn translate_phys(&mut self, phys_addr: PhysAddr, size: usize) -> Option<*mut u8> {
         // No meaning for a ptr to be valid for 0 bytes
         if size == 0 {
             return None;
@@ -69,9 +68,7 @@ impl PhysMem for PhysicalMemory {
 
         if self.current_phys_mapping.is_none()
             || self.current_phys_mapping.unwrap().0 != phys_addr_page {
-            // If the physical address is not already mapped in, we must make a mapping for it, so we
-            // need access to the page directory struct
-            let page_dir = page_dir?;
+            // If the physical address is not already mapped in, we must make a mapping for it
 
             // Make sure the requested physical window does not extend beyond this one page. This should
             // not be a problem: the page table functions only ever use this to read and write to page
@@ -85,7 +82,7 @@ impl PhysMem for PhysicalMemory {
             // provide to it, instead of asking for a virtual address from this function, which would
             // cause an inifnite loop
             let raw_pte = PAGE_ENTRY_PRESENT | PAGE_ENTRY_WRITE | phys_addr_page;
-            page_dir.map_raw_directly(VirtAddr(0xFFFFF000), raw_pte, true,
+            PageDirectory::map_raw_directly(VirtAddr(0xFFFFF000), raw_pte, true,
                 VirtAddr(LAST_PAGE_TABLE_VADDR))?;   
             self.current_phys_mapping = Some(PhysAddr(phys_addr_page));
         }
