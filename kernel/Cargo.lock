@@ -20,8 +20,23 @@ name = "cpu"
 version = "0.1.0"
 
 [[package]]
+name = "elf_parser"
+version = "0.1.0"
+
+[[package]]
+name = "enum_bitflags"
+version = "0.1.0"
+
+[[package]]
 name = "exclusive_cell"
 version = "0.1.0"
+
+[[package]]
+name = "ext2_parser"
+version = "0.1.0"
+dependencies = [
+ "enum_bitflags",
+]
 
 [[package]]
 name = "kernel"
@@ -30,9 +45,12 @@ dependencies = [
  "boot_args",
  "compiler_reqs",
  "cpu",
+ "elf_parser",
  "exclusive_cell",
+ "ext2_parser",
  "lock_cell",
  "page_tables",
+ "producer_consumer",
  "range_set",
  "serial",
 ]
@@ -50,6 +68,10 @@ version = "0.1.0"
 dependencies = [
  "cpu",
 ]
+
+[[package]]
+name = "producer_consumer"
+version = "0.1.0"
 
 [[package]]
 name = "range_set"

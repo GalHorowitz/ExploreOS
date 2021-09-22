@@ -3,8 +3,9 @@
 mod pic_8259a;
 mod pit_8254;
 
+use cpu::PushADRegisterState;
 use exclusive_cell::ExclusiveCell;
-use crate::gdt::KERNEL_CS_SELECTOR;
+use crate::{gdt::KERNEL_CS_SELECTOR, syscall::Syscall};
 use serial::println;
 
 const IDT_ENTRIES: usize = 256;
@@ -206,22 +207,26 @@ unsafe extern "cdecl" fn interrupt_handler(interrupt_number: u32, error_code: u3
     }
 }
 
-#[derive(Debug)]
-#[repr(C)]
-struct PushADRegisterState {
-    edi: u32,
-    esi: u32,
-    ebp: u32,
-    esp: u32,
-    ebx: u32,
-    edx: u32,
-    ecx: u32,
-    eax: u32,
-}
-
 /// Syscall interrupt handler, int 0x67 lands here
-unsafe extern "cdecl" fn syscall_interrupt_handler(register_state: &mut PushADRegisterState) {
-    crate::println!("Syscall {:?}", register_state);
+unsafe extern "cdecl" fn syscall_interrupt_handler(esp: u32, eflags: u32, return_eip: u32,
+    register_state: &mut PushADRegisterState) {
+    // Syscall number in eax, args 1 to 3 are in ebx, ecx, edx
+    // crate::println!("Syscall {:?} eip={:#X} esp={:#X} eflags={:#b}", register_state, return_eip, esp, eflags);
+
+    // We need to save the register state, because if this is a fork we want to clone the correct
+    // registers
+    let mut user_register_state = *register_state;
+    user_register_state.esp = esp;
+    crate::process::set_current_register_state(return_eip, eflags, user_register_state);
+
+    let syscall = Syscall::from_u32(register_state.eax).unwrap();
+
+    // crate::println!("Syscall {:?}({:#X}, {:#X}, {:#X}) [from pid={} at {:#X}]", syscall,
+    //     register_state.ebx, register_state.ecx, register_state.edx,
+    //     crate::process::SCHEDULER_STATE.lock().current_process, return_eip);
+
+    let return_value = syscall.handle(register_state.ebx, register_state.ecx, register_state.edx);
+    register_state.eax = return_value as u32;
 }
 
 macro_rules! int_asm_no_err_code {
@@ -462,11 +467,14 @@ unsafe extern fn interrupt_47_handler() -> ! {
 unsafe extern fn interrupt_103_handler() -> ! {
     asm!("
             pushad
-            push esp            // Function argument: the pushad register state
-            call {int_handler}  // Call the handler function
-            add esp, 4          // Pop the argument
+            push esp                  // Function argument: the pushad register state
+            push dword ptr [esp + 36] // Function argument: the return eip
+            push dword ptr [esp + 48] // Function argument: the user eflags
+            push dword ptr [esp + 56] // Function argument: the user esp
+            call {int_handler}        // Call the handler function
+            add esp, 16               // Pop the arguments
             popad
-            iretd               // Return from the interrupt
+            iretd                     // Return from the interrupt
         ",
         int_handler = sym syscall_interrupt_handler,
         options(noreturn)

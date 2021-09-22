@@ -142,6 +142,7 @@ impl GlobalAllocator {
             let mut last_entry: Option<*mut FreePagesEntry> = None;
             let mut entry = free_list;
             loop {
+                assert!(last_entry.is_none() || entry != last_entry.unwrap());
                 let free_pages = unsafe { core::ptr::read(entry) };
 
                 // We check if we can fit the allocation in this entry
@@ -175,10 +176,10 @@ impl GlobalAllocator {
 
                         return Some(entry as *mut u8);
                     }
-                } else if free_pages.next.is_some() {
+                } else if let Some(next_entry) = free_pages.next {
                     // If we can't, but there are more entries in the list, we advance to the next
                     last_entry = Some(entry);
-                    entry = free_pages.next.unwrap();
+                    entry = next_entry;
                 } else {
                     // If this is the end of the list, we exit the loop
                     break;
@@ -238,10 +239,11 @@ impl GlobalAllocator {
 
         let mut start_of_free_list = FREE_PAGES_LIST.lock();
 
+        assert!(core::mem::size_of::<FreePagesEntry>() <= 0x1000);
         let mut new_entry_ptr = ptr as *mut FreePagesEntry;
         let mut new_entry = FreePagesEntry {
             page_count: aligned_size / 4096,
-            next: *start_of_free_list
+            next: None,
         };
 
         // If the free list is not empty, we need to check if the freed allocation is adjacent to
@@ -250,6 +252,8 @@ impl GlobalAllocator {
             let mut last_entry: Option<*mut FreePagesEntry> = None;
             let mut entry = free_list;
             loop {
+                assert!(last_entry.is_none() || entry != last_entry.unwrap());
+
                 let free_pages = unsafe { core::ptr::read(entry) };
 
                 if ptr as usize + aligned_size == entry as usize {
@@ -264,11 +268,11 @@ impl GlobalAllocator {
                             core::ptr::write(last_entry, last);
                         }
                     } else {
-                        // If this is the free entry, we update the list heads
+                        // If this is the first entry, we update the list head
                         *start_of_free_list = free_pages.next;
                     }
                 } else if ptr as usize == entry as usize + (free_pages.page_count * 4096) {
-                    // Else, if the freed allocation start at the end of this free entry, we remove
+                    // Else, if the freed allocation starts at the end of this free entry, we remove
                     // the existing entry and update our new one
                     new_entry.page_count += free_pages.page_count;
                     new_entry_ptr = entry;
@@ -280,7 +284,7 @@ impl GlobalAllocator {
                             core::ptr::write(last_entry, last);
                         }
                     } else {
-                        // If this is the free entry, we update the list heads
+                         // If this is the first entry, we update the list head
                         *start_of_free_list = free_pages.next;
                     }
                 }
@@ -294,8 +298,10 @@ impl GlobalAllocator {
                 }
             }
         }
+
+        // After merging everything we could, we set the next ptr to the updated start of the list
+        new_entry.next = *start_of_free_list;
         
-        assert!(core::mem::size_of::<FreePagesEntry>() <= 0x1000);
         // Save the list entry at the start of the allocation
         unsafe {
             core::ptr::write(new_entry_ptr, new_entry);

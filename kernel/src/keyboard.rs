@@ -1,6 +1,8 @@
 //! General keyboard definitions and methods
 
 use exclusive_cell::ExclusiveCell;
+use producer_consumer::ProducerConsumer;
+use crate::println;
 
 // The order of keys is generally from top to bottom, left to right, first the main keys, then the
 // action keys, then arrows, and then the numpad and finally multimedia keys.
@@ -164,6 +166,7 @@ impl KeyCode {
 	}
 }
 
+#[derive(PartialEq)]
 pub enum KeyEventType {
 	KeyDown,
 	KeyUp,
@@ -185,7 +188,7 @@ pub struct KeyEvent {
 impl KeyEvent {
 	/// Returns the ASCII representation of the pressed key, modifier keys are respected. `None` is
 	/// returned if the key press does not have an ASCII representation.
-	fn as_ascii(&self) -> Option<u8> {
+	pub fn as_ascii(&self) -> Option<u8> {
 		// If Control/Alt/Logo is down, this is not a normal text key.
 		if self.ctrl_down || self.alt_down || self.logo_down {
 			return None;
@@ -390,6 +393,7 @@ impl KeyboardState {
 /// The global keyboard state. Access should be exclusive: we do not expect to recieve two key
 /// events simultaneously
 static KEYBOARD_STATE: ExclusiveCell<KeyboardState> = ExclusiveCell::new(KeyboardState::new());
+pub static KEYBOARD_EVENTS_QUEUE: ProducerConsumer<KeyEvent, 20> = ProducerConsumer::new();
 
 /// Updates the keyboard state given that the key with code `key_code` was pressed down
 pub fn key_pressed_event(key_code: KeyCode) {
@@ -430,12 +434,8 @@ pub fn key_pressed_event(key_code: KeyCode) {
 		number_lock_enabled: keyboard_state.number_lock_enabled,
 	};
 
-	// FIXME: REMOVE DEBUG
-	if let Some(chr) = event.as_ascii() {
-		crate::screen::print_char(chr, crate::screen::ATTR_WHITE_ON_BLACK);
-		if chr == b'\n' {
-			crate::screen::print("> ");
-		}
+	if KEYBOARD_EVENTS_QUEUE.produce(event).is_none() {
+		println!("Warning: dropping keyboard events because buffer ran out of space");
 	}
 }
 
@@ -458,7 +458,7 @@ pub fn key_released_event(key_code: KeyCode) {
 		|| keyboard_state.key_state[KeyCode::KeyRightLogo as usize];
 
 	// Construct the KeyUp event
-	let _event = KeyEvent {
+	let event = KeyEvent {
 		key_code,
 		event_type: KeyEventType::KeyUp,
 		shift_down,
@@ -469,5 +469,7 @@ pub fn key_released_event(key_code: KeyCode) {
 		number_lock_enabled: keyboard_state.number_lock_enabled,
 	};
 
-	// TODO: Propagate this event somehow
+	if KEYBOARD_EVENTS_QUEUE.produce(event).is_none() {
+		println!("Warning: dropping keyboard events because buffer ran out of space");
+	}
 }

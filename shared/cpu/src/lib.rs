@@ -3,6 +3,19 @@
 #![no_std]
 #![feature(asm)]
 
+#[derive(Clone, Copy, Debug, Default)]
+#[repr(C)]
+pub struct PushADRegisterState {
+    pub edi: u32,
+    pub esi: u32,
+    pub ebp: u32,
+    pub esp: u32,
+    pub ebx: u32,
+    pub edx: u32,
+    pub ecx: u32,
+    pub eax: u32,
+}
+
 /// Reads a byte from the specified IO port `addr`
 ///
 /// ### Safety
@@ -208,24 +221,72 @@ pub fn get_if() -> bool {
 /// this should only be used in such a context. For further constraints, see the intel manual
 /// `iretd`
 #[inline]
-pub unsafe fn jump_to_ring0(eip: u32, cs_selector: u16, eflags: u32, esp: u32, ds_selector: u16)
-    -> ! {
+pub unsafe fn jump_to_ring3(eip: u32, cs_selector: u16, eflags: u32, ds_selector: u16,
+    regs: &PushADRegisterState, cr3: u32) -> ! {
     let cs_selector = cs_selector as u32;
     let ds_selector = ds_selector as u32;
+
     asm!("
-            cli         // Disable interrutps during segment selector switching
-            mov ds, {0:x} 
+            cli         // Disable interrupts during segment selector switching, will be re-enabled
+            mov ds, {0:x} // by the EFLAGS swap in `iretd`
             mov es, {0:x}
             mov fs, {0:x}
             mov gs, {0:x}
 
             // Setup fake interrupt stack frame
-            push {0:e}    // SS selector (high 16-bits discarded)
-            push {1:e}    // ESP
-            push {2:e}    // EFLAGS
-            push {3:e}    // CS selector (high 16-bits discarded)
-            push {4:e}    // EIP
+            push {0:e}      // SS selector (high 16-bits discarded)
+            push [eax + 12] // ESP
+            push {1:e}      // EFLAGS
+            push {2:e}      // CS selector (high 16-bits discarded)
+            push {3:e}      // EIP
+
+            // Setup page directory
+            mov cr3, {4:e}
+
+            // Restore registers
+            mov edi, [eax]
+            mov esi, [eax + 4]
+            mov ebp, [eax + 8]
+            mov ebx, [eax + 16]
+            mov edx, [eax + 20]
+            mov ecx, [eax + 24]
+            mov eax, [eax + 28]
             iretd
-        ", in(reg) ds_selector, in(reg) esp, in(reg) eflags, in(reg) cs_selector, in(reg) eip,
-        options(noreturn));
+        ",
+        in(reg) ds_selector, in(reg) eflags, in(reg) cs_selector, in(reg) eip, in(reg) cr3,
+        in("eax") regs, options(noreturn)
+    );
+}
+
+#[inline]
+pub unsafe fn ring0_context_switch(eip: u32, eflags: u32, regs: &PushADRegisterState, cr3: u32) -> ! {
+    asm!("
+            // Restore eflags
+            push {0:e}
+            popfd
+
+            // Restore esp first, so we can push the fake return address
+            mov esp, [eax + 12]
+
+            // Switch page directory (This is a ring 0 to ring 0 switch, so this kernel code is
+            // mapped-in in both page directories)
+            mov cr3, {2:e}
+
+            // Setup fake return address (we must do this now because all registers are overwritten)
+            push {1:e}
+
+            // Restore registers
+            mov edi, [eax]
+            mov esi, [eax + 4]
+            mov ebp, [eax + 8]
+            mov ebx, [eax + 16]
+            mov edx, [eax + 20]
+            mov ecx, [eax + 24]
+            mov eax, [eax + 28]
+
+            // Make the jump
+            ret
+        ",
+        in(reg) eflags, in(reg) eip, in(reg) cr3, in("eax") regs, options(noreturn)
+    );
 }

@@ -1,15 +1,19 @@
 //! Kernel entry point
 
-#![feature(panic_info_message, default_alloc_error_handler, naked_functions, asm, const_panic)]
+#![feature(panic_info_message, default_alloc_error_handler, naked_functions, asm, const_panic, box_syntax)]
 #![no_std]
 #![no_main]
 
 extern crate compiler_reqs;
 extern crate alloc;
 
+use alloc::vec;
 use boot_args::BootArgs;
-use page_tables::{PhysAddr, VirtAddr};
+use page_tables::VirtAddr;
 use serial::println;
+use elf_parser::ElfParser;
+
+use crate::process::{SCHEDULER_STATE, Process};
 
 mod panic;
 mod memory_manager;
@@ -20,6 +24,11 @@ mod screen;
 mod keyboard;
 mod mouse;
 mod ps2;
+mod vfs;
+mod userspace;
+mod syscall;
+mod process;
+mod ext2;
 
 /// Entry point of the kernel. `boot_args_ptr` is a a physical address below 1MiB which points to a
 /// `BootArgs` structure.
@@ -54,64 +63,46 @@ pub extern fn entry(boot_args_ptr: *const BootArgs) -> ! {
 
     // Initialize and clear the screen
     screen::init();
-    screen::print("> ");
 
     // Test syscall TODO: REMOVE
-    unsafe {
-        asm!("
-            int 0x67
-        ");
-    }
-
+    // unsafe {
+    //     asm!("
+    //         int 0x67
+    //     ");
+    // }
+    
     // Test heap allocator TODO: REMOVE
-    {
-        let start = cpu::serializing_rdtsc();
-        let mut vec: alloc::vec::Vec<u8> = alloc::vec::Vec::with_capacity(1024 * 1024);
-        vec.push(4u8);
-        vec.push(6u8);
-        vec.push(8u8);
-        vec.push(13u8);
-        let elapsed = cpu::serializing_rdtsc() - start;
-        println!("Took {} cycles to allocate {} bytes {:?}", elapsed, vec.capacity(), &vec[..3]);
-    }
+    // {
+    //     let start = cpu::serializing_rdtsc();
+    //     let mut vec: alloc::vec::Vec<u8> = alloc::vec::Vec::with_capacity(1024 * 1024);
+    //     vec.push(4u8);
+    //     vec.push(6u8);
+    //     vec.push(8u8);
+    //     vec.push(13u8);
+    //     let elapsed = cpu::serializing_rdtsc() - start;
+    //     println!("Took {} cycles to allocate {} bytes {:?}", elapsed, vec.capacity(), &vec[..3]);
+    // }
 
-    const USER_CODE_VADDR:  u32 = 0x1000_0000;
-    const USER_STACK_VADDR: u32 = 0x0FFF_F000;
-    const USER_STACK_SIZE: u32 = 0x1000;
-    const KERNEL_INTR_STACK_VADDR: u32 = 0xFFFFB000;
-    const KERNEL_INTR_STACK_SIZE: u32 = 0x1000;
+    ext2::init();
 
-    let func_vaddr = {
-        let mut pmem = memory_manager::PHYS_MEM.lock();
-        let (phys_mem, page_dir) = pmem.as_mut().unwrap();
-
-        page_dir.map(phys_mem, VirtAddr(KERNEL_INTR_STACK_VADDR), KERNEL_INTR_STACK_SIZE, true,
-            false).unwrap();
-
-        let func_phys_addr = page_dir.translate_virt(phys_mem, VirtAddr(test_user as u32)).unwrap();
-        let page_phys_addr = PhysAddr(func_phys_addr.0 & !0xFFF);
-        page_dir.map_to_phys_page(phys_mem, VirtAddr(USER_CODE_VADDR), page_phys_addr, true, true,
-            false, true).unwrap();
-
-        page_dir.map(phys_mem, VirtAddr(USER_STACK_VADDR), USER_STACK_SIZE, true, true).unwrap();
-
-        USER_CODE_VADDR + (func_phys_addr.0 & 0xFFF)
+    let user_program = {
+        let ext2_parser = ext2::EXT2_PARSER.lock();
+        let ext2_parser = ext2_parser.as_ref().unwrap();
+        let (user_program_inode, _) = ext2_parser.resolve_path_to_inode("/bin/shell").unwrap();
+        let user_program_metadata = ext2_parser.get_inode(user_program_inode);
+        let user_program_size = user_program_metadata.size_low as usize;
+        let mut user_program = vec![0u8; user_program_size];
+        assert!(ext2_parser.get_contents(user_program_inode, &mut user_program) == user_program_size);
+        user_program
     };
 
-    const USER_EFLAGS: u32 = 0b0000000000_000000_0_0_00_0_0_10_00_0_0_0_0_1_0;
+    const KERNEL_INTR_STACK_VADDR: u32 = 0xFFFFB000;
 
-    println!("func_vaddr={:#X}", func_vaddr);
+    let elf_parser = ElfParser::parse(&user_program).unwrap();
+    let proc = Process::new_from_elf(VirtAddr(KERNEL_INTR_STACK_VADDR), elf_parser);
 
-    tss::set_kernel_esp(KERNEL_INTR_STACK_VADDR + KERNEL_INTR_STACK_SIZE);
-    unsafe {
-        cpu::jump_to_ring0(func_vaddr, gdt::USER_CS_SELECTOR | 3, USER_EFLAGS,
-            USER_STACK_VADDR + USER_STACK_SIZE, gdt::USER_DS_SELECTOR | 3);
-    }
+    SCHEDULER_STATE.lock().processes[0] = Some(proc);
+    process::switch_to_current_process();
 }
 
-extern fn test_user() -> ! {
-    unsafe {
-        asm!("int 0x67");
-    }
-    loop {}
-}
+pub const RAM_EXT2_FS: &'static [u8] = include_bytes!("../../userland/test_ext2.fs");
