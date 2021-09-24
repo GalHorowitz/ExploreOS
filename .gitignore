@@ -2,6 +2,8 @@
 /bootloader/target
 /kernel/target
 /build
+/userland/fs/bin/*
+/userland/test_ext2.fs
 *.code-workspace
 bochs_serial.out
 qemu_log.txt
