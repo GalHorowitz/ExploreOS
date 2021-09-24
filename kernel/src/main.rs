@@ -10,7 +10,7 @@ extern crate alloc;
 use alloc::vec;
 use boot_args::BootArgs;
 use page_tables::VirtAddr;
-use serial::println;
+use serial::{print, println};
 use elf_parser::ElfParser;
 
 use crate::process::{SCHEDULER_STATE, Process};
@@ -88,7 +88,7 @@ pub extern fn entry(boot_args_ptr: *const BootArgs) -> ! {
     let user_program = {
         let ext2_parser = ext2::EXT2_PARSER.lock();
         let ext2_parser = ext2_parser.as_ref().unwrap();
-        let (user_program_inode, _) = ext2_parser.resolve_path_to_inode("/bin/shell").unwrap();
+        let (user_program_inode, _) = ext2_parser.resolve_path_to_inode("/bin/shell", ext2_parser::ROOT_INODE).unwrap();
         let user_program_metadata = ext2_parser.get_inode(user_program_inode);
         let user_program_size = user_program_metadata.size_low as usize;
         let mut user_program = vec![0u8; user_program_size];

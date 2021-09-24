@@ -6,7 +6,7 @@ const SUPER_BLOCK_OFFSET: usize = 1024;
 const SUPER_BLOCK_SIZE: usize = 1024;
 const SUPER_BLOCK_MAGIC_SIGNATURE: u16 = 0xEF53;
 const INODE_DIRECT_PTR_COUNT: usize = 12;
-const ROOT_INODE: u32 = 2;
+pub const ROOT_INODE: u32 = 2;
 
 #[derive(Clone, Copy, Debug)]
 #[repr(transparent)]
@@ -348,11 +348,18 @@ impl<'a> Ext2Parser<'a> {
             IterationDecision::Continue
         });
     }
-    
-    pub fn resolve_path_to_inode(&self, path: &str) -> Option<(u32, DirEntryType)> {
-        if !path.starts_with("/") {
-            return None;
+
+    pub fn resolve_path_to_inode(&self, path: &str, mut base_inode: u32) -> Option<(u32, DirEntryType)> {
+        if path == "/" {
+            return Some((ROOT_INODE, DirEntryType::Directory));
         }
+
+        let path = if path.starts_with("/") {
+            base_inode = ROOT_INODE;
+            &path[1..]
+        } else {
+            path
+        };
 
         let path = if path.ends_with("/") {
             &path[..path.len()-1]
@@ -360,11 +367,11 @@ impl<'a> Ext2Parser<'a> {
             path
         };
         
-        let mut inode = ROOT_INODE;
+        let mut inode = base_inode;
         let mut entry_type = DirEntryType::Directory;
         let mut reached_file = false;
 
-        for component in path.split('/').skip(1) {
+        for component in path.split('/') {
             if component == "" || reached_file {
                 return None;
             }

@@ -11,6 +11,8 @@
 #define SYSCALL_EXIT 6
 #define SYSCALL_WAITPID 7
 #define SYSCALL_STAT 8
+#define SYSCALL_GETCWD 9
+#define SYSCALL_CHDIR 10
 
 int syscall(int syscall_num, void* arg1, void* arg2, void* arg3) {
 	int return_val;
@@ -93,4 +95,12 @@ struct stat {
 };
 int stat(char* path, struct stat* statbuf) {
 	return syscall(SYSCALL_STAT, path, statbuf, 0);
+}
+
+int getcwd(char* buf, int size) {
+	return syscall(SYSCALL_GETCWD, buf, (void*) size, 0);
+}
+
+int chdir(char* path) {
+	return syscall(SYSCALL_CHDIR, path, 0, 0);
 }

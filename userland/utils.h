@@ -54,7 +54,7 @@ char* strstr(char* s1, char* s2) {
 	return NULL;
 }
 
-void get_line(char* out_buf, int len) {
+int get_line(char* out_buf, int len) {
 	for(int i = 0; i < len - 1; i++){
 		read(0, &out_buf[i], 1);
 		write(1, &out_buf[i], 1);
@@ -69,10 +69,11 @@ void get_line(char* out_buf, int len) {
 
 		if(out_buf[i] == '\n') {
 			out_buf[i] = 0;
-			return;
+			return i;
 		}
 	}
 	out_buf[len - 1] = 0;
+	return len - 1;
 }
 
 void put_char(char ch) {

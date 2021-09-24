@@ -2,44 +2,35 @@
 #include "syscall.h"
 #include "utils.h"
 
+void handle_cd(char* line, int length) {
+	if(length == 2) {
+		// TODO: cd to home
+	} else {
+		if(chdir(line+3) < 0) {
+			println("Failed to change directory");
+		}
+	}
+}
+
 int main() {
 	println("Temp Shell (TM)");
 
 	char cmd_buffer[100];
+	char cwd_buffer[256];
 
 	while(1) {
+		// TODO: Calling getcwd each time is dumb, we should just maintain this locally
+		int res = getcwd(cwd_buffer, sizeof(cwd_buffer));
+		if(res > 0) {
+			print(cwd_buffer);
+		} else {
+			print_num(res);
+		}
 		print("$ ");
-		get_line(cmd_buffer, sizeof(cmd_buffer));
+		int line_length = get_line(cmd_buffer, sizeof(cmd_buffer));
 
-		if(strcmp(cmd_buffer, "ls") == 0) {
-			DIR* d = opendir("/");
-			struct dirent *dir;
-			while(dir = readdir(d)) {
-				println(dir->d_name);
-			}
-			closedir(d);
-		} else if(strncmp(cmd_buffer, "cat ", 4) == 0) {
-			int fd = open(cmd_buffer+4, O_RDONLY);
-			if(fd < 0) {
-				print("Failed to open file `");
-				print(cmd_buffer+4);
-				println("`");
-				continue;
-			}
-
-			char contents_buffer[64];
-			while(1) {
-				int res = read(fd, contents_buffer, sizeof(contents_buffer) - 1);
-				if(res <= 0)
-					break;
-				
-				contents_buffer[res] = 0;
-				print(contents_buffer);
-
-				if(res < sizeof(contents_buffer) - 1)
-					break;
-			}
-			close(fd);
+		if(strcmp(cmd_buffer, "cd") == 0 || strncmp(cmd_buffer, "cd ", 3) == 0) {
+			handle_cd(cmd_buffer, line_length);
 		} else {
 			print("Running program `");
 			print(cmd_buffer);

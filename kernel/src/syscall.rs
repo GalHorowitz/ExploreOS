@@ -2,7 +2,7 @@ use alloc::borrow::ToOwned;
 use alloc::string::String;
 use alloc::vec::Vec;
 use elf_parser::ElfParser;
-use ext2_parser::DirEntryType;
+use ext2_parser::{DirEntryType, IterationDecision};
 use page_tables::VirtAddr;
 use crate::ext2;
 use crate::keyboard::{KEYBOARD_EVENTS_QUEUE, KeyEventType};
@@ -23,6 +23,8 @@ pub enum Syscall {
 	Exit,
 	WaitPID,
 	Stat,
+	GetCWD,
+	ChangeCWD,
     Count,
 }
 
@@ -34,6 +36,7 @@ pub enum SyscallError {
 	InvalidAddress,
 	InvalidPath,
 	PathIsDirectory,
+	PathIsNotDirectory,
 	BufferTooSmall,
 	InvalidElfFile,
 }
@@ -74,6 +77,8 @@ impl Syscall {
 			Syscall::Exit => syscall_exit(arg0),
 			Syscall::WaitPID => syscall_waitpid(arg0, UserVaddr::new(arg1), arg2),
 			Syscall::Stat => syscall_stat(UserCStr::new(arg0), UserVaddr::new(arg1)),
+			Syscall::GetCWD => syscall_getcwd(UserVaddr::new(arg0), arg1),
+			Syscall::ChangeCWD => syscall_changecwd(UserCStr::new(arg0)),
 			Syscall::Count => SyscallError::UnknownSyscall.to_i32(),
 		}
 	}
@@ -189,8 +194,11 @@ fn syscall_write(fd: u32, buf: UserVaddr<u8>, num_bytes: u32) -> i32 {
 fn syscall_open(path: UserCStr, flags: u32) -> i32 {
 	let path = unwrap_or_return!(path.as_str(), SyscallError::InvalidAddress);
 
+	let mut sched_state = SCHEDULER_STATE.lock();
+	let cur_proc = sched_state.get_current_process();
+
 	let (inode, entry_type) = unwrap_or_return!(
-		ext2::EXT2_PARSER.lock().as_ref().unwrap().resolve_path_to_inode(path),
+		ext2::EXT2_PARSER.lock().as_ref().unwrap().resolve_path_to_inode(path, cur_proc.cwd_inode),
 		SyscallError::InvalidPath
 	);
 
@@ -205,7 +213,7 @@ fn syscall_open(path: UserCStr, flags: u32) -> i32 {
 	}), SyscallError::OpenFileLimitReached);
 
 	let fd = unwrap_or_return!(
-		SCHEDULER_STATE.lock().get_current_process().alloc_file_descriptor(desc_idx),
+		cur_proc.alloc_file_descriptor(desc_idx),
 		SyscallError::OpenFileLimitReached
 	);
 
@@ -233,11 +241,14 @@ fn syscall_execve(path: UserCStr, argv: UserVaddr<UserCStr>, envp: UserVaddr<Use
 		SyscallError::InvalidAddress
 	).iter().map(|cstr| cstr.as_str().unwrap().to_owned()).collect();
 
+	let mut sched_state = SCHEDULER_STATE.lock();
+	let cur_proc = sched_state.get_current_process();
+
 	let user_program = {
 		let ext2_parser = ext2::EXT2_PARSER.lock();
 		let ext2_parser = ext2_parser.as_ref().unwrap();
 		let (inode, entry_type) = unwrap_or_return!(
-			ext2_parser.resolve_path_to_inode(path),
+			ext2_parser.resolve_path_to_inode(path, cur_proc.cwd_inode),
 			SyscallError::InvalidPath
 		);
 		if entry_type != DirEntryType::RegularFile {
@@ -252,9 +263,10 @@ fn syscall_execve(path: UserCStr, argv: UserVaddr<UserCStr>, envp: UserVaddr<Use
 	};
 
 	let elf_parser = unwrap_or_return!(ElfParser::parse(&user_program), SyscallError::InvalidElfFile);
-	crate::process::SCHEDULER_STATE.lock().get_current_process().replace_with_elf(elf_parser, &resolved_argv, &resolved_envp);
+	sched_state.get_current_process().replace_with_elf(elf_parser, &resolved_argv, &resolved_envp);
 
-	crate::process::switch_to_current_process()
+	drop(sched_state);
+	crate::process::switch_to_current_process();
 }
 
 fn syscall_fork() -> i32 {
@@ -312,11 +324,14 @@ fn syscall_stat(path: UserCStr, stat_buf: UserVaddr<FileStat>) -> i32 {
 	let path = unwrap_or_return!(path.as_str(), SyscallError::InvalidAddress);
 	let stat_buf = unwrap_or_return!(stat_buf.as_ref_mut(), SyscallError::InvalidAddress);
 
+	let mut sched_state = SCHEDULER_STATE.lock();
+	let cur_proc = sched_state.get_current_process();
+
 	let ext2_parser = ext2::EXT2_PARSER.lock();
 	let ext2_parser = ext2_parser.as_ref().unwrap();
 
 	let (inode, _) = unwrap_or_return!(
-		ext2_parser.resolve_path_to_inode(path),
+		ext2_parser.resolve_path_to_inode(path, cur_proc.cwd_inode),
 		SyscallError::InvalidPath
 	);
 
@@ -336,6 +351,102 @@ fn syscall_stat(path: UserCStr, stat_buf: UserVaddr<FileStat>) -> i32 {
 	};
 
 	*stat_buf = stat_result;
+
+	0
+}
+
+fn syscall_getcwd(buf: UserVaddr<u8>, size: u32) -> i32 {
+	let size = size.min(i32::MAX as u32) as usize;
+	let buf = unwrap_or_return!(buf.as_slice_mut(size), SyscallError::InvalidAddress);
+
+	let mut sched_state = SCHEDULER_STATE.lock();
+	let cur_proc = sched_state.get_current_process();
+
+	if cur_proc.cwd_inode == ext2_parser::ROOT_INODE {
+		if size < 2 {
+			return SyscallError::BufferTooSmall.to_i32();
+		} else {
+			buf[0] = b'/';
+			buf[1] = 0;
+			return 1;
+		}
+	}
+
+	let ext2_parser = ext2::EXT2_PARSER.lock();
+	let ext2_parser = ext2_parser.as_ref().unwrap();
+
+	let mut inode_walk = [0u32; 128];
+	let mut walk_index = 0;
+
+	inode_walk[0] = cur_proc.cwd_inode;
+	while inode_walk[walk_index] != ext2_parser::ROOT_INODE {
+		assert!(walk_index + 1 < inode_walk.len());
+
+		ext2_parser.for_each_directory_entry(inode_walk[walk_index],
+			|entry_inode, entry_name, _| {
+				if entry_name == ".." {
+					inode_walk[walk_index + 1] = entry_inode;
+					IterationDecision::Break
+				} else {
+					IterationDecision::Continue
+				}
+			}
+		);
+
+		walk_index += 1;
+	}
+
+	// TODO: Calling for_each_directory_entry twice is bad, optimize this
+
+	let mut write_index = 0;
+	let mut success = true;
+	for i in (1..=walk_index).rev() {
+		ext2_parser.for_each_directory_entry(inode_walk[i],
+			|entry_inode, entry_name, _| {
+				if entry_inode == inode_walk[i-1] {
+					if write_index + entry_name.len() + 2 > size {
+						success = false;
+						return IterationDecision::Break;
+					}
+					
+					buf[write_index] = b'/';
+					write_index += 1;
+					buf[write_index..write_index + entry_name.len()].copy_from_slice(entry_name.as_bytes());
+					write_index += entry_name.len();
+
+					IterationDecision::Break
+				} else {
+					IterationDecision::Continue
+				}
+			}
+		);
+
+		if !success {
+			return SyscallError::BufferTooSmall.to_i32();
+		}
+	}
+
+	buf[write_index] = 0;
+
+	write_index as i32
+}
+
+fn syscall_changecwd(path: UserCStr) -> i32 {
+	let path = unwrap_or_return!(path.as_str(), SyscallError::InvalidAddress);
+	
+	let mut sched_state = SCHEDULER_STATE.lock();
+	let cur_proc = sched_state.get_current_process();
+
+	let (inode, entry_type) = unwrap_or_return!(
+		ext2::EXT2_PARSER.lock().as_ref().unwrap().resolve_path_to_inode(path, cur_proc.cwd_inode),
+		SyscallError::InvalidPath
+	);
+
+	if entry_type != DirEntryType::Directory {
+		return SyscallError::PathIsNotDirectory.to_i32();
+	}
+
+	cur_proc.cwd_inode = inode;
 
 	0
 }

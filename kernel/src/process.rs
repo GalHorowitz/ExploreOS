@@ -17,6 +17,7 @@ pub struct Process {
 	kernel_intr_stack: VirtAddr,
 
 	file_descriptors: [Option<usize>; 16],
+	pub cwd_inode: u32,
 
 	registers: PushADRegisterState,
 	eip: u32,
@@ -56,6 +57,7 @@ impl Process {
 			virtual_memory_ranges: [None; 16],
 			kernel_intr_stack,
 			file_descriptors: [None; 16],
+			cwd_inode: ext2_parser::ROOT_INODE,
 			registers: PushADRegisterState::default(),
 			eip: 0,
 			eflags: USER_DEFAULT_EFLAGS,
@@ -109,6 +111,7 @@ impl Process {
 		let mut proc = Self::new(kernel_intr_stack);
 
 		proc.file_descriptors = parent.file_descriptors;
+		proc.cwd_inode = parent.cwd_inode;
 		proc.registers = parent.registers;
 		proc.registers.eax = 0; // The fork-syscall return value is 0 for the child
 		proc.eip = parent.eip;

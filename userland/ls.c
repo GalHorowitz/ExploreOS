@@ -3,7 +3,7 @@
 #include "utils.h"
 
 int main(int argc, char** argv) {
-	char* dir_path = "/";
+	char* dir_path = ".";
 	if(argc == 2) {
 		if(strcmp(argv[1], "--help") == 0) {
 			print("Usage: ");
