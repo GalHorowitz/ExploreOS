@@ -85,12 +85,10 @@ fn read_current_time() -> u32 {
 	// If the hour format is not 24-hours, we use the AM/PM flag to convert
 	let hours = if hour_format_24 {
 		hours
+	} else if currently_pm {
+		(hours % 12) + 12
 	} else {
-		if currently_pm {
-			(hours % 12) + 12
-		} else {
-			hours % 12
-		}
+		hours % 12
 	};
 
 	// We assume we are in the 2000s

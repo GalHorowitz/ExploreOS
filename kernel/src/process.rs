@@ -9,7 +9,7 @@ use crate::{gdt, memory_manager::{self, PhysicalMemory}, tss};
 const KERNEL_INTR_STACK_SIZE: u32 = 0x1000;
 const USER_STACK_VADDR: VirtAddr = VirtAddr(0x0FFF_F000);
 const USER_STACK_SIZE: u32 = 0x1000;
-const USER_DEFAULT_EFLAGS: u32 = 0b0000000000_000000_0_0_00_0_0_10_00_0_0_0_0_1_0;
+const USER_DEFAULT_EFLAGS: u32 = 0b0000_0000_0000_0000_0000_0010_0000_0010;
 
 pub struct Process {
 	page_directory: PageDirectory,
@@ -48,7 +48,7 @@ impl Process {
 		(&mut new_pd[3072..]).copy_from_slice(&pd_buffer[..]);
 			
 		// FIXME: Temp hack because we dont free the kernel stack yet
-		proc_page_dir.unmap(phys_mem, kernel_intr_stack, true);
+		let _ = proc_page_dir.unmap(phys_mem, kernel_intr_stack, true);
 		// TODO: How does this get updates in other processes' page directories?
 		proc_page_dir.map(phys_mem, kernel_intr_stack, KERNEL_INTR_STACK_SIZE, true, false).unwrap();
 

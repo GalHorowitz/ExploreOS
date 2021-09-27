@@ -26,88 +26,88 @@ pub fn init() {
 
     // Setup the descriptors for exceptions
     idt[0] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_0_handler as u32, 0, true,
-        DescriptorType::InterruptGate);
+        DescriptorType::Interrupt);
     idt[1] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_1_handler as u32, 0, true,
-        DescriptorType::InterruptGate);
+        DescriptorType::Interrupt);
     idt[2] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_2_handler as u32, 0, true,
-        DescriptorType::InterruptGate);
+        DescriptorType::Interrupt);
     idt[3] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_3_handler as u32, 3, true,
-        DescriptorType::InterruptGate);
+        DescriptorType::Interrupt);
     idt[4] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_4_handler as u32, 3, true,
-        DescriptorType::InterruptGate);
+        DescriptorType::Interrupt);
     idt[5] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_5_handler as u32, 0, true,
-        DescriptorType::InterruptGate);
+        DescriptorType::Interrupt);
     idt[6] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_6_handler as u32, 0, true,
-        DescriptorType::InterruptGate);
+        DescriptorType::Interrupt);
     idt[7] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_7_handler as u32, 0, true,
-        DescriptorType::InterruptGate);
+        DescriptorType::Interrupt);
     
     // TODO: Use a task gate for the double fault handler so we can handle kernel stack corruptino
     idt[8] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_8_handler as u32, 0, true,
-        DescriptorType::InterruptGate);
+        DescriptorType::Interrupt);
 
     idt[9] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_9_handler as u32, 0, true,
-        DescriptorType::InterruptGate);
+        DescriptorType::Interrupt);
     idt[10] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_10_handler as u32, 0,
-        true, DescriptorType::InterruptGate);
+        true, DescriptorType::Interrupt);
     idt[11] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_11_handler as u32, 0,
-        true, DescriptorType::InterruptGate);
+        true, DescriptorType::Interrupt);
     idt[12] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_12_handler as u32, 0,
-        true, DescriptorType::InterruptGate);
+        true, DescriptorType::Interrupt);
     idt[13] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_13_handler as u32, 0,
-        true, DescriptorType::InterruptGate);
+        true, DescriptorType::Interrupt);
     idt[14] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_14_handler as u32, 0,
-        true, DescriptorType::InterruptGate);
+        true, DescriptorType::Interrupt);
     idt[16] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_16_handler as u32, 0,
-        true, DescriptorType::InterruptGate);
+        true, DescriptorType::Interrupt);
     idt[17] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_17_handler as u32, 0,
-        true, DescriptorType::InterruptGate);
+        true, DescriptorType::Interrupt);
     idt[18] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_18_handler as u32, 0,
-        true, DescriptorType::InterruptGate);
+        true, DescriptorType::Interrupt);
     idt[19] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_19_handler as u32, 0,
-        true, DescriptorType::InterruptGate);
+        true, DescriptorType::Interrupt);
     idt[20] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_20_handler as u32, 0,
-        true, DescriptorType::InterruptGate);
+        true, DescriptorType::Interrupt);
     idt[21] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_21_handler as u32, 0,
-        true, DescriptorType::InterruptGate);
+        true, DescriptorType::Interrupt);
     
     // Setup the descriptor for the 8259A PICs
     idt[32] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_32_handler as u32, 0,
-        true, DescriptorType::InterruptGate);
+        true, DescriptorType::Interrupt);
     idt[33] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_33_handler as u32, 0,
-        true, DescriptorType::InterruptGate);
+        true, DescriptorType::Interrupt);
     idt[34] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_34_handler as u32, 0,
-        true, DescriptorType::InterruptGate);
+        true, DescriptorType::Interrupt);
     idt[35] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_35_handler as u32, 0,
-        true, DescriptorType::InterruptGate);
+        true, DescriptorType::Interrupt);
     idt[36] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_36_handler as u32, 0,
-        true, DescriptorType::InterruptGate);
+        true, DescriptorType::Interrupt);
     idt[37] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_37_handler as u32, 0,
-        true, DescriptorType::InterruptGate);
+        true, DescriptorType::Interrupt);
     idt[38] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_38_handler as u32, 0,
-        true, DescriptorType::InterruptGate);
+        true, DescriptorType::Interrupt);
     idt[39] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_39_handler as u32, 0,
-        true, DescriptorType::InterruptGate);
+        true, DescriptorType::Interrupt);
     idt[40] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_40_handler as u32, 0,
-        true, DescriptorType::InterruptGate);
+        true, DescriptorType::Interrupt);
     idt[41] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_41_handler as u32, 0,
-        true, DescriptorType::InterruptGate);
+        true, DescriptorType::Interrupt);
     idt[42] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_42_handler as u32, 0,
-        true, DescriptorType::InterruptGate);
+        true, DescriptorType::Interrupt);
     idt[43] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_43_handler as u32, 0,
-        true, DescriptorType::InterruptGate);
+        true, DescriptorType::Interrupt);
     idt[44] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_44_handler as u32, 0,
-        true, DescriptorType::InterruptGate);
+        true, DescriptorType::Interrupt);
     idt[45] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_45_handler as u32, 0,
-        true, DescriptorType::InterruptGate);
+        true, DescriptorType::Interrupt);
     idt[46] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_46_handler as u32, 0,
-        true, DescriptorType::InterruptGate);
+        true, DescriptorType::Interrupt);
     idt[47] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_47_handler as u32, 0,
-        true, DescriptorType::InterruptGate);
+        true, DescriptorType::Interrupt);
     
     // Setup the descriptor for syscalls
     idt[0x67] = IDTEntry::new(KERNEL_CS_SELECTOR, interrupt_103_handler as u32, 3,
-        true, DescriptorType::TrapGate);
+        true, DescriptorType::Trap);
 
     // Load the IDT
     unsafe {
@@ -124,8 +124,7 @@ pub fn init() {
     unsafe { cpu::sti(); }
 }
 
-#[allow(dead_code)]
-pub enum DescriptorType { TaskGate, InterruptGate, TrapGate }
+pub enum DescriptorType { Task, Interrupt, Trap }
 
 impl IDTEntry {
     /// Constructs the u64 representing an interrupt descriptor based on the given parameters
@@ -141,9 +140,9 @@ impl IDTEntry {
         assert!(privilege < 4);
         
         let type_bits = match typ {
-            DescriptorType::InterruptGate => 0,
-            DescriptorType::TrapGate => 1,
-            DescriptorType::TaskGate => unimplemented!()
+            DescriptorType::Interrupt => 0,
+            DescriptorType::Trap => 1,
+            DescriptorType::Task => unimplemented!()
         };
         
         let low_dword = ((segment as u32) << 16) | (entry_offset & 0xFFFF);
@@ -158,8 +157,7 @@ impl IDTEntry {
 unsafe extern "cdecl" fn interrupt_handler(interrupt_number: u32, error_code: u32, eip: u32) {
     let interrupt_number = interrupt_number as u8;
     
-    if interrupt_number >= pic_8259a::PIC_IRQ_OFFSET
-        && interrupt_number < pic_8259a::PIC_IRQ_OFFSET + 16 {
+    if (pic_8259a::PIC_IRQ_OFFSET..pic_8259a::PIC_IRQ_OFFSET + 16).contains(&interrupt_number) {
         let irq = interrupt_number - pic_8259a::PIC_IRQ_OFFSET;
         if pic_8259a::handle_spurious_irq(irq) {
             println!("WARNING: Spurious PIC IRQ {}!", irq);

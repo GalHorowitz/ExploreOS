@@ -4,7 +4,7 @@ use exclusive_cell::ExclusiveCell;
 
 const GDT_ENTRIES: usize = 6;
 
-pub const KERNEL_CS_SELECTOR: u16 = 1*8;
+pub const KERNEL_CS_SELECTOR: u16 = 8;
 pub const KERNEL_DS_SELECTOR: u16 = 2*8;
 pub const USER_CS_SELECTOR: u16 = 3*8;
 pub const USER_DS_SELECTOR: u16 = 4*8;

@@ -142,27 +142,25 @@ pub enum KeyCode {
 impl KeyCode {
 	/// Whether or not the key is in the numpad area
 	fn is_in_numpad(&self) -> bool {
-		match self {
+		matches!(self, 
 			KeyCode::KeyNumpad0 | KeyCode::KeyNumpad1 | KeyCode::KeyNumpad2 | KeyCode::KeyNumpad3 |
 			KeyCode::KeyNumpad4 | KeyCode::KeyNumpad5 | KeyCode::KeyNumpad6 | KeyCode::KeyNumpad7 |
 			KeyCode::KeyNumpad8 | KeyCode::KeyNumpad9 | KeyCode::KeyNumberLock |
 			KeyCode::KeyNumpadSlash | KeyCode::KeyNumpadAsterisk | KeyCode::KeyNumpadMinus |
-			KeyCode::KeyNumpadPlus | KeyCode::KeyNumpadEnter | KeyCode::KeyNumpadPeriod => true,
-			_ => false
-		}
+			KeyCode::KeyNumpadPlus | KeyCode::KeyNumpadEnter | KeyCode::KeyNumpadPeriod
+		)
 	}
 
 	/// Whether or not this is a letter key
 	fn is_letter(&self) -> bool {
-		match self {
+		matches!(self,
 			KeyCode::KeyA | KeyCode::KeyB | KeyCode::KeyC | KeyCode::KeyD | KeyCode::KeyE |
 			KeyCode::KeyF | KeyCode::KeyG | KeyCode::KeyH | KeyCode::KeyI | KeyCode::KeyJ |
 			KeyCode::KeyK | KeyCode::KeyL | KeyCode::KeyM | KeyCode::KeyN | KeyCode::KeyO |
 			KeyCode::KeyP | KeyCode::KeyQ | KeyCode::KeyR | KeyCode::KeyS | KeyCode::KeyT |
 			KeyCode::KeyU | KeyCode::KeyV | KeyCode::KeyW | KeyCode::KeyX | KeyCode::KeyY |
-			KeyCode::KeyZ => true,
-			_ => false
-		}
+			KeyCode::KeyZ
+		)
 	}
 }
 

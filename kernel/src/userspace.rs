@@ -60,9 +60,7 @@ impl UserVaddr<UserCStr> {
 					break;
 				}
 
-				if element.as_str().is_none() {
-					return None;
-				}
+				let _ = element.as_str()?;
 			} else {
 				return None;
 			}
@@ -97,7 +95,7 @@ impl UserCStr {
 		let slice = unsafe {
 			core::slice::from_raw_parts(self.0 as *const u8, length as usize)
 		};
-		Some(core::str::from_utf8(slice).ok()?)
+		core::str::from_utf8(slice).ok()
 	}
 
 	pub fn is_null(&self) -> bool {

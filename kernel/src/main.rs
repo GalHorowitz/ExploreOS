@@ -10,7 +10,7 @@ extern crate alloc;
 use alloc::vec;
 use boot_args::BootArgs;
 use page_tables::VirtAddr;
-use serial::{print, println};
+use serial::println;
 use elf_parser::ElfParser;
 
 use crate::process::{SCHEDULER_STATE, Process};
@@ -109,4 +109,4 @@ pub extern fn entry(boot_args_ptr: *const BootArgs) -> ! {
     process::switch_to_current_process();
 }
 
-pub const RAM_EXT2_FS: &'static [u8] = include_bytes!("../../userland/test_ext2.fs");
+pub const RAM_EXT2_FS: &[u8] = include_bytes!("../../userland/test_ext2.fs");

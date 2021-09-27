@@ -23,16 +23,13 @@ const REAL_FREQ_HZ: f64 = PIT_FREQ_HZ / (PIT_FREQ_DIV as f64);
 
 /// Initiailizes the PIT's first counter as a rate generator
 pub fn init() {
-	// A frequency divisor of 1 is illegal in mode 2
-	assert!(PIT_FREQ_DIV != 1);
-
 	unsafe {
 		// Initialize counter 0 by writing a setup control-word:
 		// 00  - select counter 0
 		// 11  - write least signifcant byte first, then most significant byte
 		// 010 - mode 2 (rate generator)
 		// 0   - 16-bit binary (instead of BCD)
-		cpu::out8(PIT_CONTROL_WORD_REGISTER_PORT, 0b00_11_010_0);
+		cpu::out8(PIT_CONTROL_WORD_REGISTER_PORT, 0b0011_0100);
 
 		// Write the least sig and most sig bytes of the freq divisor
 		cpu::out8(PIT_CHANNEL_0_DATA_PORT, PIT_FREQ_DIV as u8);

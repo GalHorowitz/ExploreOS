@@ -568,9 +568,9 @@ impl<'a> Ext2Parser<'a> {
 
         // If the path starts with a `/` it is an absolute path, and we turn it into a relative path
         // by changing the base inode into the root inode
-        let path = if path.starts_with("/") {
+        let path = if let Some(rel_path) = path.strip_prefix('/') {
             base_inode = ROOT_INODE;
-            &path[1..]
+            rel_path
         } else {
             path
         };
@@ -578,8 +578,8 @@ impl<'a> Ext2Parser<'a> {
         // If the path points to a directory, it may end with a `/` so we strip it if it exists. But
         // we need to remember if the path did end with a `/`, because this is illegal if the path
         // does not point to a directory
-        let (path, must_be_dir) = if path.ends_with("/") {
-            (&path[..path.len()-1], true)
+        let (path, must_be_dir) = if let Some(canon_path) = path.strip_suffix('/') {
+            (canon_path, true)
         } else {
             (path, false)
         };
@@ -593,7 +593,7 @@ impl<'a> Ext2Parser<'a> {
         for component in path.split('/') {
             // An empty path component or a path that continues after reaching a file are both
             // invalid
-            if component == "" || reached_file {
+            if component.is_empty() || reached_file {
                 return None;
             }
 
@@ -642,7 +642,7 @@ impl<'a> Ext2Parser<'a> {
     /// Reads the file with inode number `inode` into `out_buffer` starting at the specified offset.
     /// The amount of bytes read is returned, and it is limited by the size of `out_buffer`
     pub fn get_contents_with_offset(&self, inode: u32, out_buffer: &mut [u8], offset: usize) -> usize {
-        if out_buffer.len() == 0 {
+        if out_buffer.is_empty() {
             return 0;
         }
 

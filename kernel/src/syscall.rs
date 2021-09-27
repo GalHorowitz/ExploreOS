@@ -28,6 +28,7 @@ pub enum Syscall {
     Count,
 }
 
+#[derive(Clone, Copy)]
 #[repr(u16)]
 pub enum SyscallError {
 	UnknownSyscall = 1,
@@ -102,20 +103,16 @@ fn syscall_read(fd: u32, buf: UserVaddr<u8>, num_bytes: u32) -> i32 {
 
 	let buf = buf.as_slice_mut(num_bytes as usize).unwrap();
 	if fd == 0 {
-		for i in 0..num_bytes as usize {
-			let chr: u8;
-			loop {
+		for byte in buf.iter_mut().take(num_bytes as usize) {
+			'try_get_ascii: loop {
 				let event = KEYBOARD_EVENTS_QUEUE.consume_blocking();
 				if event.event_type == KeyEventType::KeyDown {
-					let ascii = event.as_ascii();
-					if ascii.is_some() {
-						chr = ascii.unwrap();
-						break;
+					if let Some(ascii) = event.as_ascii() {
+						*byte = ascii;
+						break 'try_get_ascii;
 					}
 				}
 			}
-
-			buf[i] = chr;
 		}
 
 		num_bytes as i32
@@ -203,7 +200,7 @@ fn syscall_open(path: UserCStr, flags: u32) -> i32 {
 	);
 
 	let desc_idx = unwrap_or_return!(FILE_DESCRIPTIONS.lock().add_description(FileDescription {
-		inode: inode,
+		inode,
 		offset: 0,
 		status: flags,
 		file_type: match entry_type {
