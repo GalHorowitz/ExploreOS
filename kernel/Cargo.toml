@@ -4,6 +4,8 @@ version = "0.1.0"
 authors = ["Gal Horowitz <galush.horowitz@gmail.com>"]
 edition = "2018"
 
+[workspace]
+
 [dependencies]
 compiler_reqs = { path = "../shared/compiler_reqs" }
 cpu = { path = "../shared/cpu" }
@@ -14,8 +16,8 @@ boot_args = { path = "../shared/boot_args" }
 lock_cell = { path = "../shared/lock_cell" }
 exclusive_cell = { path = "../shared/exclusive_cell" }
 elf_parser = { path = "../shared/elf_parser" }
-producer_consumer = { path = "../shared/producer_consumer" }
-ext2_parser = { path = "../shared/ext2_parser" }
+producer_consumer = { path = "libraries/producer_consumer" }
+ext2_parser = { path = "libraries/ext2_parser" }
 
 [profile.dev]
 panic = "abort"

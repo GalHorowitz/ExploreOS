@@ -4,7 +4,7 @@
 #[macro_export]
 macro_rules! bitor_flags {
     ( $x:ty, $y:ty ) => {
-        impl core::ops::BitOr<$x> for $x {
+        impl const core::ops::BitOr<$x> for $x {
             type Output = $y;
         
             fn bitor(self, rhs: $x) -> Self::Output {
