@@ -29,6 +29,7 @@ mod userspace;
 mod syscall;
 mod process;
 mod ext2;
+mod time;
 
 /// Entry point of the kernel. `boot_args_ptr` is a a physical address below 1MiB which points to a
 /// `BootArgs` structure.
@@ -52,6 +53,9 @@ pub extern fn entry(boot_args_ptr: *const BootArgs) -> ! {
 
     // Initialize the GDT and the TSS
     unsafe { gdt::init(); }
+
+    // Get current time
+    time::init();
 
     // Initialize the IDT, PIC and PIT and enable interrupts
     interrupts::init();

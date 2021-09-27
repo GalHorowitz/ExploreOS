@@ -209,6 +209,19 @@ pub fn get_if() -> bool {
     (get_eflags() & (1 << 9)) != 0
 }
 
+/// Creates an artificial delay using a busy loop which is useful in very early IO operations. The
+/// count controls the "length" of the wait, but it does not map to any real-word time units, and
+/// might lead to different lengths on different processors
+#[inline]
+pub fn busy_loop(mut count: usize) {
+    while count > 0 {
+        unsafe {
+            asm!("", options(nomem, nostack));
+        }
+        count -= 1;
+    }
+}
+
 /// Performs a long jump to `cs_selector:eip`. The eflags register will be set to `eflgas` and the
 /// stack will atomically change to `ds_selector:esp`. The data segment selector will also be used
 /// to set all other data segment selectors.
