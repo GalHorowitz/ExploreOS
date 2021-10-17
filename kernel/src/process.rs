@@ -211,6 +211,9 @@ impl Process {
 		assert!(stack_off < 4096);
 
 		self.registers.esp -= stack_off as u32;
+
+		// https://github.com/hjl-tools/x86-psABI/wiki/x86-64-psABI-1.0.pdf
+		// TODO: See section 3.4.1, stack must be aligned
 	}
 
 	pub fn alloc_file_descriptor(&mut self, desc: usize) -> Option<usize> {

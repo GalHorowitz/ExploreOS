@@ -107,7 +107,7 @@ fn read_isr() -> u16 {
 	}
 }
 
-/// Returns true if this a spurious IRQ which should be discarded. Send the neccesary commands if
+/// Returns true if this a spurious IRQ which should be discarded. Sends the neccesary commands if
 // the IRQ is spurious
 pub fn handle_spurious_irq(irq: u8) -> bool {
 	// Only IRQ 7 and 15 can be spurious IRQs

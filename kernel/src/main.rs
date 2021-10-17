@@ -30,6 +30,7 @@ mod syscall;
 mod process;
 mod ext2;
 mod time;
+mod pata;
 
 /// Entry point of the kernel. `boot_args_ptr` is a a physical address below 1MiB which points to a
 /// `BootArgs` structure.

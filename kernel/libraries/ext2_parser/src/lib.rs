@@ -697,6 +697,29 @@ impl<'a> Ext2Parser<'a> {
         total_read
     }
 
+    /// Writes the contents of `data` to the file with inode number `inode` starting at the
+    /// specified offset. If the data to write does not fit in the existing allocated blocks, new
+    /// blocks are allocated
+    pub fn write_contents_with_offset(&self, inode: u32, data: &[u8], offset: usize) {
+        if data.is_empty() {
+            return;
+        }
+
+        // TODO: 64bit size
+        let inode_metadata = self.get_inode(inode);
+        let size_on_disk = inode_metadata.disk_sector_count.checked_mul(512).unwrap();
+        let end_offset = offset.checked_add(data.len()).unwrap();
+
+        if end_offset > size_on_disk as usize {
+            todo!("Block allocation needed to extend file");
+        }
+
+        // FIXME: Don't iterate from the start every time...
+        // self.for_each_data_block(inode, |data_block| {
+
+        // });
+    }
+
     /// Calls the `callback` for each block allocated to inode whose number is `inode`. The callback
     /// will be called with a byte slice of the block's content
     pub fn for_each_data_block<F>(&self, inode: u32, callback: &mut F)
