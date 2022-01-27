@@ -1,3 +1,5 @@
+use core::arch::asm;
+
 use alloc::{string::String, vec};
 use elf_parser::ElfParser;
 use lock_cell::LockCell;

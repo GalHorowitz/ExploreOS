@@ -3,6 +3,7 @@
 mod pic_8259a;
 mod pit_8254;
 
+use core::arch::asm;
 use cpu::PushADRegisterState;
 use exclusive_cell::ExclusiveCell;
 use crate::{gdt::KERNEL_CS_SELECTOR, syscall::Syscall};

@@ -1,7 +1,7 @@
 //! A circular queue for a single producer, single consumer scenario
 
 #![no_std]
-#![feature(const_maybe_uninit_assume_init, maybe_uninit_uninit_array, maybe_uninit_extra)]
+#![feature(const_maybe_uninit_assume_init, maybe_uninit_uninit_array)]
 
 use core::cell::UnsafeCell;
 use core::mem::MaybeUninit;

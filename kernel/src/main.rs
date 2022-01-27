@@ -1,6 +1,6 @@
 //! Kernel entry point
 
-#![feature(panic_info_message, default_alloc_error_handler, naked_functions, asm, const_panic, box_syntax)]
+#![feature(asm_sym, asm_const, panic_info_message, default_alloc_error_handler, naked_functions, box_syntax)]
 #![no_std]
 #![no_main]
 

@@ -6,3 +6,6 @@ rustflags = ["-C", "relocation-model=static", "-C", "linker=ld.lld", "-C",
 	"""link-args=-Tlinker_script.ld --entry=entry --nostdlib -znodefaultlib -zmax-page-size=16
 	--image-base=0x7e00 --no-eh-frame-hdr ../build/bootloader/rust_asm_routines.o"""
 ]
+
+[unstable]
+build-std = ["core", "alloc"]

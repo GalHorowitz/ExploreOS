@@ -1,7 +1,8 @@
 //! x86-specific routines
 
 #![no_std]
-#![feature(asm)]
+
+use core::arch::asm;
 
 #[derive(Clone, Copy, Debug, Default)]
 #[repr(C)]
