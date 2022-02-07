@@ -126,7 +126,8 @@ fn syscall_write(fd: u32, buf: UserVaddr<u8>, num_bytes: u32) -> i32 {
 	let buf = buf.as_slice(num_bytes as usize).unwrap();
 	if fd == 1 {
 		let buf_str = core::str::from_utf8(buf).unwrap();
-		crate::screen::print(buf_str);
+		// crate::text_screen::print(buf_str);
+		crate::text_terminal::print(buf_str);
 	}
 
 	num_bytes as i32

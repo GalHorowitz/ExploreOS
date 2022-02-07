@@ -36,6 +36,9 @@ pub extern fn entry(boot_disk_id: u8, bootloader_size: u32) -> ! {
     screen::reset();
     screen::print("Welcome to the bootloader!\n");
 
+    // Set up video mode using BIOS
+    let (fb_addr, fb_width, fb_height) = screen::setup_vesa();
+
     // Load and map the kernel
     let (kernel_entry, kernel_stack, new_cr3, last_page_table_paddr) =
         setup_kernel(boot_disk_id, bootloader_size);
@@ -48,7 +51,10 @@ pub extern fn entry(boot_disk_id: u8, bootloader_size: u32) -> ! {
     let boot_args = BootArgs {
         free_memory: core::mem::replace(&mut *pmem, None).unwrap().0,
         serial_port: core::mem::replace(&mut *serial, None).unwrap(),
-        last_page_table_paddr
+        last_page_table_paddr,
+        frame_buffer_paddr: fb_addr,
+        frame_buffer_width: fb_width,
+        frame_buffer_height: fb_height,
     };
 
     // Release the locks because we will never return from the kernel so they would not be released

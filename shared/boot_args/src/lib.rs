@@ -29,4 +29,11 @@ pub struct BootArgs {
     /// The physical address of the page table containing the last page. The kernel needs this
     /// information to access physical memory
     pub last_page_table_paddr: PhysAddr,
+
+    /// The physical address of the linear frame buffer
+    pub frame_buffer_paddr: PhysAddr,
+    /// The width of frame buffer
+    pub frame_buffer_width: u16,
+    /// The height of the frame buffer
+    pub frame_buffer_height: u16,
 }

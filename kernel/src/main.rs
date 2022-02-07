@@ -1,6 +1,6 @@
 //! Kernel entry point
 
-#![feature(asm_sym, asm_const, panic_info_message, default_alloc_error_handler, naked_functions, box_syntax)]
+#![feature(asm_sym, asm_const, panic_info_message, default_alloc_error_handler, naked_functions, box_syntax, int_roundings)]
 #![no_std]
 #![no_main]
 
@@ -20,7 +20,8 @@ mod memory_manager;
 mod tss;
 mod gdt;
 mod interrupts;
-mod screen;
+mod graphics_screen;
+mod text_terminal;
 mod keyboard;
 mod mouse;
 mod ps2;
@@ -66,7 +67,8 @@ pub extern fn entry(boot_args_ptr: *const BootArgs) -> ! {
     ps2::controller::init();
 
     // Initialize and clear the screen
-    screen::init();
+    graphics_screen::init(boot_args.frame_buffer_paddr, boot_args.frame_buffer_width,
+        boot_args.frame_buffer_height);
 
     // Test syscall TODO: REMOVE
     // unsafe {
