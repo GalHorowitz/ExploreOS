@@ -101,6 +101,18 @@ pub fn get_eflags() -> u32 {
     eflags
 }
 
+/// Gets the value of the x87 FPU status register
+#[inline]
+pub fn get_x87_fpu_status() -> u16 {
+    let status: u16;
+    unsafe {
+        asm!("
+            fnstsw ax
+        ", out("ax") status, options(nomem, preserves_flags, nostack));
+    }
+    status
+}
+
 /// Reads the timestamp counter (with an LFENCE on either side to keep instructions from reordering)
 #[inline]
 pub fn serializing_rdtsc() -> u64 {

@@ -24,7 +24,11 @@ pub fn init() {
 	// starts, so in theory we could wait until a updating->not updating edge, but because the RTC
 	// updates every second, we might have to wait a whole second. Instead, we wait until the RTC
 	// is not updating, and read the time twice, and retry if the times do not match
+
+	let mut attempt_count = 0;
 	loop {
+		attempt_count += 1;
+
 		// Wait until the RTC is not upating
 		while (read_cmos_reg(CMOS_RTC_STATUS_A_REGISTER) & (1 << 7)) != 0 {
 			core::hint::spin_loop();
@@ -43,6 +47,11 @@ pub fn init() {
 		if current_time == current_time_alt {
 			// We got a consistent time, so we store it and finish
 			BOOT_UNIX_TIME.store(current_time, Ordering::Relaxed);
+			break;
+		} else if attempt_count > 3 {
+			// For some reason we fail to get a consistent time, but we don't want to delay startup
+			crate::println!("Warning: RTC Consistency check failed, time may be incorrect");
+			BOOT_UNIX_TIME.store(current_time_alt, Ordering::Relaxed);
 			break;
 		}
 	}
@@ -158,7 +167,7 @@ fn read_cmos_reg(reg: u8) -> u8 {
 		// and then reading the value from the data port. The OSDev wiki advises to have a small
 		// delay between the operations
 		cpu::out8(CMOS_ADDRESS_PORT, reg);
-		cpu::busy_loop(0x6c600);
+		cpu::busy_loop(0x6c60);
 		cpu::in8(CMOS_DATA_PORT)
 	}
 }

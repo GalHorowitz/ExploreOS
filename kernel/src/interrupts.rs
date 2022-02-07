@@ -196,7 +196,7 @@ unsafe extern "cdecl" fn interrupt_handler(interrupt_number: u32, error_code: u3
         12 => panic!("Stack Fault Exception (#SS)"),
         13 => panic!("General Protection Exception (#GP)"),
         14 => panic!("Page-Fault Exception (#PF) CR2={:#010x}", cpu::get_cr2()),
-        16 => panic!("x87 FPU Floating-Point Error (#MF)"),
+        16 => panic!("x87 FPU Floating-Point Error (#MF) StatusRegister={:#0b}", cpu::get_x87_fpu_status()),
         17 => panic!("Alignment Check Exception (#AC)"),
         18 => panic!("Machine-Check Exception (#MC)"),
         19 => panic!("SIMD Floating-Point Exception (#XM)"),
