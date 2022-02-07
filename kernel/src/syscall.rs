@@ -226,43 +226,43 @@ fn syscall_close(fd: u32) -> i32 {
 }
 
 fn syscall_execve(path: UserCStr, argv: UserVaddr<UserCStr>, envp: UserVaddr<UserCStr>) -> i32 {
-	let path = unwrap_or_return!(path.as_str(), SyscallError::InvalidAddress);
+	{
+		let path = unwrap_or_return!(path.as_str(), SyscallError::InvalidAddress);
 
-	let resolved_argv: Vec<String> = unwrap_or_return!(
-		argv.as_null_terminated_slice(),
-		SyscallError::InvalidAddress
-	).iter().map(|cstr| cstr.as_str().unwrap().to_owned()).collect();
+		let resolved_argv: Vec<String> = unwrap_or_return!(
+			argv.as_null_terminated_slice(),
+			SyscallError::InvalidAddress
+		).iter().map(|cstr| cstr.as_str().unwrap().to_owned()).collect();
 
-	let resolved_envp: Vec<String> = unwrap_or_return!(
-		envp.as_null_terminated_slice(),
-		SyscallError::InvalidAddress
-	).iter().map(|cstr| cstr.as_str().unwrap().to_owned()).collect();
+		let resolved_envp: Vec<String> = unwrap_or_return!(
+			envp.as_null_terminated_slice(),
+			SyscallError::InvalidAddress
+		).iter().map(|cstr| cstr.as_str().unwrap().to_owned()).collect();
 
-	let mut sched_state = SCHEDULER_STATE.lock();
-	let cur_proc = sched_state.get_current_process();
+		let mut sched_state = SCHEDULER_STATE.lock();
+		let cur_proc = sched_state.get_current_process();
 
-	let user_program = {
-		let ext2_parser = ext2::EXT2_PARSER.lock();
-		let ext2_parser = ext2_parser.as_ref().unwrap();
-		let (inode, entry_type) = unwrap_or_return!(
-			ext2_parser.resolve_path_to_inode(path, cur_proc.cwd_inode),
-			SyscallError::InvalidPath
-		);
-		if entry_type != DirEntryType::RegularFile {
-			return SyscallError::PathIsDirectory.to_i32();
-		}
+		let user_program = {
+			let ext2_parser = ext2::EXT2_PARSER.lock();
+			let ext2_parser = ext2_parser.as_ref().unwrap();
+			let (inode, entry_type) = unwrap_or_return!(
+				ext2_parser.resolve_path_to_inode(path, cur_proc.cwd_inode),
+				SyscallError::InvalidPath
+			);
+			if entry_type != DirEntryType::RegularFile {
+				return SyscallError::PathIsDirectory.to_i32();
+			}
 
-		let user_program_metadata = ext2_parser.get_inode(inode);
-		let user_program_size = user_program_metadata.size_low as usize;
-		let mut user_program = crate::vec![0u8; user_program_size];
-		assert!(ext2_parser.get_contents(inode, &mut user_program) == user_program_size);
-		user_program
-	};
+			let user_program_metadata = ext2_parser.get_inode(inode);
+			let user_program_size = user_program_metadata.size_low as usize;
+			let mut user_program = crate::vec![0u8; user_program_size];
+			assert!(ext2_parser.get_contents(inode, &mut user_program) == user_program_size);
+			user_program
+		};
 
-	let elf_parser = unwrap_or_return!(ElfParser::parse(&user_program), SyscallError::InvalidElfFile);
-	sched_state.get_current_process().replace_with_elf(elf_parser, &resolved_argv, &resolved_envp);
-
-	drop(sched_state);
+		let elf_parser = unwrap_or_return!(ElfParser::parse(&user_program), SyscallError::InvalidElfFile);
+		sched_state.get_current_process().replace_with_elf(elf_parser, &resolved_argv, &resolved_envp);
+	}
 	crate::process::switch_to_current_process();
 }
 
