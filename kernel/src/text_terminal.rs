@@ -29,6 +29,10 @@ impl TextTerminal {
 		}
 	}
 
+	fn char_at(&mut self, col: usize, row: usize) -> &mut u8 {
+		&mut self.text[(row * TERMINAL_COLS) + col]
+	}
+
 	/// Prints one `character` to the screen at the cursor, and then advances the cursor.
 	/// Also handles new lines.
 	fn print_char(&mut self, character: u8) {
@@ -53,15 +57,29 @@ impl TextTerminal {
 			if self.cursor_col != 0 || self.cursor_row != 0 {
 				if self.cursor_col > 0 {
 					self.cursor_col -= 1;
+					*self.char_at(self.cursor_col, self.cursor_row) = 0;
 				} else {
-					// TODO: Find the last character in the line
-					self.cursor_col = TERMINAL_COLS - 1;
 					self.cursor_row -= 1;
+					// Find the last character in the previous line
+					let mut last_char_col = 0;
+					for i in (1..TERMINAL_COLS).rev() {
+						if *self.char_at(i, self.cursor_row) != 0 {
+							last_char_col = i;
+							break;
+						}
+					}
+					// We only remove a character if the line extended all the way to the end,
+					// otherwise we treat the backspace as if it removed the 'newline'
+					if last_char_col == TERMINAL_COLS - 1 {
+						self.cursor_col = last_char_col;
+						*self.char_at(self.cursor_col, self.cursor_row) = 0;
+					} else {
+						self.cursor_col = last_char_col + 1;
+					}
 				}
 			}
-			self.text[(self.cursor_row * TERMINAL_COLS) + self.cursor_col] = 0;
 		} else {
-			self.text[(self.cursor_row * TERMINAL_COLS) + self.cursor_col] = character;
+			*self.char_at(self.cursor_col, self.cursor_row) = character;
 
 			// If this was the last character of the screen we need to scroll
 			if self.cursor_row == TERMINAL_ROWS - 1 && self.cursor_col == TERMINAL_COLS - 1 {
