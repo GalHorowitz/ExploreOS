@@ -128,17 +128,39 @@ static GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator;
 struct GlobalAllocator;
 
 impl GlobalAllocator {
+    #[allow(unused)]
+    fn dump_free_list(&self) {
+        crate::println!("FREE LIST DUMP: ");
+
+        let start_of_free_list = FREE_PAGES_LIST.lock();
+        if let Some(free_list) = *start_of_free_list {
+            let mut entry = free_list;
+            loop {
+                let free_pages = unsafe { core::ptr::read(entry) };
+                crate::println!(" -\t{:#X?}: {} pages", entry, free_pages.page_count);
+
+                // If there is another entry in the list we continue to it, else we finish
+                if free_pages.next.is_some() {
+                    entry = free_pages.next.unwrap();
+                } else {
+                    break;
+                }
+            }
+        } else {
+            crate::println!("\tempty");
+        }
+    }
+
     /// Tries to satisfy the allocation of page-aligned size `aligned_size` using the free list.
     /// Returns `None` if not successful
     fn alloc_from_free_list(&self, aligned_size: usize) -> Option<*mut u8> {
         assert!(aligned_size & 0xFFF == 0);
+        // Calculate the number of pages we need to fit the allocation
+        let num_pages_needed = aligned_size / 4096;
 
         let mut start_of_free_list = FREE_PAGES_LIST.lock();
         // Check if there are any entries in the free list
         if let Some(free_list) = *start_of_free_list {
-            // Calculate the number of pages we need to fit the allocation
-            let num_pages_needed = aligned_size / 4096;
-
             let mut last_entry: Option<*mut FreePagesEntry> = None;
             let mut entry = free_list;
             loop {
@@ -256,11 +278,13 @@ impl GlobalAllocator {
 
                 let free_pages = unsafe { core::ptr::read(entry) };
 
+                let mut removed_this_entry = false;
                 if ptr as usize + aligned_size == entry as usize {
                     // If the freed allocation ends at the start of this free entry, we remove the
                     // existing entry and update our new one
                     new_entry.page_count += free_pages.page_count;
 
+                    removed_this_entry = true;
                     if let Some(last_entry) = last_entry {
                         unsafe {
                             let mut last = core::ptr::read(last_entry);
@@ -277,6 +301,7 @@ impl GlobalAllocator {
                     new_entry.page_count += free_pages.page_count;
                     new_entry_ptr = entry;
 
+                    removed_this_entry = true;
                     if let Some(last_entry) = last_entry {
                         unsafe {
                             let mut last = core::ptr::read(last_entry);
@@ -291,7 +316,9 @@ impl GlobalAllocator {
 
                 // If there is another entry in the list we continue to it, else we finish
                 if free_pages.next.is_some() {
-                    last_entry = Some(entry);
+                    if !removed_this_entry {
+                        last_entry = Some(entry);
+                    }
                     entry = free_pages.next.unwrap();
                 } else {
                     break;
