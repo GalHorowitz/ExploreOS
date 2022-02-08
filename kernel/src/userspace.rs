@@ -1,16 +1,16 @@
 use core::marker::PhantomData;
 
-pub struct UserVaddr<T>(u32, PhantomData<T>);
+use alloc::{string::String, vec::Vec, borrow::ToOwned};
+use syscall_interface::{SyscallString, SyscallArray};
 
-#[repr(transparent)]
-pub struct UserCStr(u32);
+pub struct UserVaddr<'a, T>(u32, PhantomData<&'a T>);
 
-impl<T> UserVaddr<T> {
-    pub const fn new(vaddr: u32) -> Self {
-		Self(vaddr, PhantomData)
+impl<'a, T> UserVaddr<'a, T> {
+    pub const fn new(vaddr: &'a u32) -> Self {
+		Self(*vaddr, PhantomData::<&'a T>)
 	}
 
-	pub fn as_ref(&self) -> Option<&T> {
+	pub fn as_ref(&self) -> Option<&'a T> {
 		if is_valid_for_reading(self.0 as usize, core::mem::size_of::<T>()) {
 			unsafe { Some(&*(self.0 as *const T)) }
 		} else {
@@ -18,7 +18,7 @@ impl<T> UserVaddr<T> {
 		}
 	}
 
-	pub fn as_ref_mut(&self) -> Option<&mut T> {
+	pub fn as_ref_mut(&self) -> Option<&'a mut T> {
 		if is_valid_for_writing(self.0 as usize, core::mem::size_of::<T>()) {
 			unsafe { Some(&mut *(self.0 as *mut T)) }
 		} else {
@@ -26,7 +26,7 @@ impl<T> UserVaddr<T> {
 		}
 	}
 
-	pub fn as_slice(&self, count: usize) -> Option<&[T]> {
+	pub fn as_slice(&self, count: usize) -> Option<&'a [T]> {
 		if is_valid_for_reading(self.0 as usize, core::mem::size_of::<T>().checked_mul(count)?) {
 			unsafe { Some(core::slice::from_raw_parts(self.0 as *const T, count as usize)) }
 		} else {
@@ -34,7 +34,7 @@ impl<T> UserVaddr<T> {
 		}
 	}
 
-	pub fn as_slice_mut(&self, count: usize) -> Option<&mut [T]> {
+	pub fn as_slice_mut(&self, count: usize) -> Option<&'a mut [T]> {
 		if is_valid_for_writing(self.0 as usize, core::mem::size_of::<T>().checked_mul(count)?) {
 			unsafe { Some(core::slice::from_raw_parts_mut(self.0 as *mut T, count as usize)) }
 		} else {
@@ -47,59 +47,25 @@ impl<T> UserVaddr<T> {
 	}
 }
 
-impl UserVaddr<UserCStr> {
-	pub fn as_null_terminated_slice(&self) -> Option<&[UserCStr]> {
-		let mut size = 0;
-		const PTR_SIZE: usize = core::mem::size_of::<UserCStr>();
-		loop {
-			let element_vaddr = self.0 as usize + size * PTR_SIZE;
-			if is_valid_for_reading(element_vaddr, PTR_SIZE) {
-				let element = unsafe { &*(element_vaddr as *const UserCStr) };
-				
-				if element.is_null() {
-					break;
-				}
-
-				let _ = element.as_str()?;
-			} else {
-				return None;
-			}
-
-			size += 1;
-		}
-
-		self.as_slice(size)
+impl<'a> UserVaddr<'a, SyscallString<'a>> {
+	pub fn as_str(&'a self) -> Option<&'a str> {
+		let syscall_str = self.as_ref()?;
+		let buf: &'a [u8] = UserVaddr::new(&syscall_str.ptr).as_slice(syscall_str.length as usize)?;
+		core::str::from_utf8(buf).ok()
 	}
 }
 
-impl UserCStr {
-	pub const fn new(vaddr: u32) -> Self {
-		Self(vaddr)
-	}
-
-	pub fn as_str(&self) -> Option<&str> {
-		let mut length: usize = 0;
-		loop {
-			if !is_valid_for_reading(length.checked_add(self.0 as usize)?, 1) {
-				return None;
-			}
-
-			let byte = unsafe { *((self.0 as usize + length) as *const u8) };
-			if byte == 0 {
-				break;
-			} else {
-				length = length.checked_add(1)?;
-			}
+impl<'a> UserVaddr<'a, SyscallArray<'a, SyscallString<'a>>> {
+	pub fn as_string_vec(&self) -> Option<Vec<String>> {
+		let syscall_arr = self.as_ref()?;
+		let str_arr: &[SyscallString] = UserVaddr::new(&syscall_arr.ptr).as_slice(syscall_arr.length as usize)?;
+		let mut vec = Vec::with_capacity(str_arr.len());
+		for (i, s) in str_arr.iter().enumerate() {
+			let buf: &[u8] = UserVaddr::new(&s.ptr).as_slice(s.length as usize)?;
+			vec.push(core::str::from_utf8(buf).ok()?.to_owned());
 		}
-		
-		let slice = unsafe {
-			core::slice::from_raw_parts(self.0 as *const u8, length as usize)
-		};
-		core::str::from_utf8(slice).ok()
-	}
 
-	pub fn is_null(&self) -> bool {
-		self.0 == 0
+		Some(vec)
 	}
 }
 

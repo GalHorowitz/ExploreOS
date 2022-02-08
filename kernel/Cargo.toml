@@ -15,6 +15,7 @@ page_tables = { path = "../shared/page_tables" }
 boot_args = { path = "../shared/boot_args" }
 lock_cell = { path = "../shared/lock_cell" }
 elf_parser = { path = "../shared/elf_parser" }
+syscall_interface = { path = "../shared/syscall_interface" }
 exclusive_cell = { path = "libraries/exclusive_cell" }
 producer_consumer = { path = "libraries/producer_consumer" }
 ext2_parser = { path = "libraries/ext2_parser" }

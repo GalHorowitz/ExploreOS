@@ -1,52 +1,15 @@
-use alloc::borrow::ToOwned;
 use alloc::string::String;
 use alloc::vec::Vec;
 use elf_parser::ElfParser;
 use ext2_parser::{DirEntryType, IterationDecision};
 use page_tables::VirtAddr;
+use syscall_interface::{SyscallString, SyscallFileStat, SyscallArray, SyscallDirectoryEntry};
+pub use syscall_interface::{Syscall, SyscallError};
 use crate::ext2;
 use crate::keyboard::{KEYBOARD_EVENTS_QUEUE, KeyEventType};
 use crate::process::{Process, SCHEDULER_STATE};
 use crate::vfs::{FILE_DESCRIPTIONS, FileDescription, FileType};
-use crate::userspace::{UserCStr, UserVaddr};
-
-#[allow(dead_code)]
-#[derive(Debug)]
-#[repr(u32)]
-pub enum Syscall {
-    Read = 0,
-    Write,
-	Open,
-	Close,
-	Execve,
-	Fork,
-	Exit,
-	WaitPID,
-	Stat,
-	GetCWD,
-	ChangeCWD,
-    Count,
-}
-
-#[derive(Clone, Copy)]
-#[repr(u16)]
-pub enum SyscallError {
-	UnknownSyscall = 1,
-	InvalidFileDescriptor,
-	OpenFileLimitReached,
-	InvalidAddress,
-	InvalidPath,
-	PathIsDirectory,
-	PathIsNotDirectory,
-	BufferTooSmall,
-	InvalidElfFile,
-}
-
-impl SyscallError {
-	pub fn to_i32(self) -> i32 {
-		-(self as i32)
-	}
-}
+use crate::userspace::{UserVaddr};
 
 macro_rules! unwrap_or_return {
 	( $x:expr, $err:expr ) => {
@@ -58,40 +21,21 @@ macro_rules! unwrap_or_return {
 	};
 }
 
-impl Syscall {
-	pub fn from_u32(val: u32) -> Option<Self> {
-		if val < Syscall::Count as u32 {
-			unsafe { core::mem::transmute(val) }
-		} else {
-			None
-		}
+pub fn handle_syscall(syscall: Syscall, arg0: u32, arg1: u32, arg2: u32) -> i32 {
+	match syscall {
+		Syscall::Read => syscall_read(arg0, UserVaddr::new(&arg1), arg2),
+		Syscall::Write => syscall_write(arg0, UserVaddr::new(&arg1), arg2),
+		Syscall::Open => syscall_open(UserVaddr::new(&arg0), arg1),
+		Syscall::Close => syscall_close(arg0),
+		Syscall::Execve => syscall_execve(UserVaddr::new(&arg0), UserVaddr::new(&arg1), UserVaddr::new(&arg2)),
+		Syscall::Fork => syscall_fork(),
+		Syscall::Exit => syscall_exit(arg0),
+		Syscall::WaitPID => syscall_waitpid(arg0, UserVaddr::new(&arg1), arg2),
+		Syscall::Stat => syscall_stat(UserVaddr::new(&arg0), UserVaddr::new(&arg1)),
+		Syscall::GetCWD => syscall_getcwd(UserVaddr::new(&arg0), arg1),
+		Syscall::ChangeCWD => syscall_changecwd(UserVaddr::new(&arg0)),
+		Syscall::Count => SyscallError::UnknownSyscall.to_i32(),
 	}
-
-	pub fn handle(&self, arg0: u32, arg1: u32, arg2: u32) -> i32 {
-		match self {
-			Syscall::Read => syscall_read(arg0, UserVaddr::new(arg1), arg2),
-			Syscall::Write => syscall_write(arg0, UserVaddr::new(arg1), arg2),
-			Syscall::Open => syscall_open(UserCStr::new(arg0), arg1),
-			Syscall::Close => syscall_close(arg0),
-			Syscall::Execve => syscall_execve(UserCStr::new(arg0), UserVaddr::new(arg1), UserVaddr::new(arg2)),
-			Syscall::Fork => syscall_fork(),
-			Syscall::Exit => syscall_exit(arg0),
-			Syscall::WaitPID => syscall_waitpid(arg0, UserVaddr::new(arg1), arg2),
-			Syscall::Stat => syscall_stat(UserCStr::new(arg0), UserVaddr::new(arg1)),
-			Syscall::GetCWD => syscall_getcwd(UserVaddr::new(arg0), arg1),
-			Syscall::ChangeCWD => syscall_changecwd(UserCStr::new(arg0)),
-			Syscall::Count => SyscallError::UnknownSyscall.to_i32(),
-		}
-	}
-}
-
-
-#[repr(C)]
-struct SyscallDirectoryEntry {
-	inode: u32,
-	entry_type: u8,
-	name_length: u8,
-	name: [u8; 256],
 }
 
 fn syscall_read(fd: u32, buf: UserVaddr<u8>, num_bytes: u32) -> i32 {
@@ -188,7 +132,7 @@ fn syscall_write(fd: u32, buf: UserVaddr<u8>, num_bytes: u32) -> i32 {
 	num_bytes as i32
 }
 
-fn syscall_open(path: UserCStr, flags: u32) -> i32 {
+fn syscall_open(path: UserVaddr<SyscallString>, flags: u32) -> i32 {
 	let path = unwrap_or_return!(path.as_str(), SyscallError::InvalidAddress);
 
 	let mut sched_state = SCHEDULER_STATE.lock();
@@ -225,19 +169,19 @@ fn syscall_close(fd: u32) -> i32 {
 	}
 }
 
-fn syscall_execve(path: UserCStr, argv: UserVaddr<UserCStr>, envp: UserVaddr<UserCStr>) -> i32 {
+fn syscall_execve(path: UserVaddr<SyscallString>, argv: UserVaddr<SyscallArray<SyscallString>>, envp: UserVaddr<SyscallArray<SyscallString>>) -> i32 {
 	{
 		let path = unwrap_or_return!(path.as_str(), SyscallError::InvalidAddress);
 
 		let resolved_argv: Vec<String> = unwrap_or_return!(
-			argv.as_null_terminated_slice(),
+			argv.as_string_vec(),
 			SyscallError::InvalidAddress
-		).iter().map(|cstr| cstr.as_str().unwrap().to_owned()).collect();
+		);
 
 		let resolved_envp: Vec<String> = unwrap_or_return!(
-			envp.as_null_terminated_slice(),
+			envp.as_string_vec(),
 			SyscallError::InvalidAddress
-		).iter().map(|cstr| cstr.as_str().unwrap().to_owned()).collect();
+		);
 
 		let mut sched_state = SCHEDULER_STATE.lock();
 		let cur_proc = sched_state.get_current_process();
@@ -290,7 +234,7 @@ fn syscall_exit(exit_code: u32) -> i32 {
 
 fn syscall_waitpid(pid: u32, wstatus: UserVaddr<u32>, options: u32) -> i32 {
 	if !wstatus.is_null() {
-		todo!("wstatus@waitpid");
+		// TODO: wstatus
 	}
 
 	if options != 0 {
@@ -304,20 +248,7 @@ fn syscall_waitpid(pid: u32, wstatus: UserVaddr<u32>, options: u32) -> i32 {
 	pid as i32
 }
 
-#[repr(C)]
-struct FileStat {
-	inode: u32,
-	containing_device_id: u16,
-	mode_and_type: u16,
-	num_hard_links: u16,
-	owner_user_id: u16,
-	owner_group_id: u16,
-	total_size: u32,
-	last_access_time: u32,
-	last_modification_time: u32,
-	last_status_change_time: u32,
-}
-fn syscall_stat(path: UserCStr, stat_buf: UserVaddr<FileStat>) -> i32 {
+fn syscall_stat(path: UserVaddr<SyscallString>, stat_buf: UserVaddr<SyscallFileStat>) -> i32 {
 	let path = unwrap_or_return!(path.as_str(), SyscallError::InvalidAddress);
 	let stat_buf = unwrap_or_return!(stat_buf.as_ref_mut(), SyscallError::InvalidAddress);
 
@@ -334,7 +265,7 @@ fn syscall_stat(path: UserCStr, stat_buf: UserVaddr<FileStat>) -> i32 {
 
 	let inode_metadata = ext2_parser.get_inode(inode);
 
-	let stat_result = FileStat {
+	let stat_result = SyscallFileStat {
 		containing_device_id: 0,
 		inode,
 		mode_and_type: inode_metadata.type_and_perms,
@@ -360,11 +291,10 @@ fn syscall_getcwd(buf: UserVaddr<u8>, size: u32) -> i32 {
 	let cur_proc = sched_state.get_current_process();
 
 	if cur_proc.cwd_inode == ext2_parser::ROOT_INODE {
-		if size < 2 {
+		if size < 1 {
 			return SyscallError::BufferTooSmall.to_i32();
 		} else {
 			buf[0] = b'/';
-			buf[1] = 0;
 			return 1;
 		}
 	}
@@ -401,7 +331,7 @@ fn syscall_getcwd(buf: UserVaddr<u8>, size: u32) -> i32 {
 		ext2_parser.for_each_directory_entry(inode_walk[i],
 			|entry_inode, entry_name, _| {
 				if entry_inode == inode_walk[i-1] {
-					if write_index + entry_name.len() + 2 > size {
+					if write_index + entry_name.len() + 1 > size {
 						success = false;
 						return IterationDecision::Break;
 					}
@@ -423,12 +353,10 @@ fn syscall_getcwd(buf: UserVaddr<u8>, size: u32) -> i32 {
 		}
 	}
 
-	buf[write_index] = 0;
-
 	write_index as i32
 }
 
-fn syscall_changecwd(path: UserCStr) -> i32 {
+fn syscall_changecwd(path: UserVaddr<SyscallString>) -> i32 {
 	let path = unwrap_or_return!(path.as_str(), SyscallError::InvalidAddress);
 	
 	let mut sched_state = SCHEDULER_STATE.lock();

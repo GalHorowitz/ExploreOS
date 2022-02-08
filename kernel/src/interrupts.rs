@@ -224,7 +224,7 @@ unsafe extern "cdecl" fn syscall_interrupt_handler(esp: u32, eflags: u32, return
     //     register_state.ebx, register_state.ecx, register_state.edx,
     //     crate::process::SCHEDULER_STATE.lock().current_process, return_eip);
 
-    let return_value = syscall.handle(register_state.ebx, register_state.ecx, register_state.edx);
+    let return_value = crate::syscall::handle_syscall(syscall, register_state.ebx, register_state.ecx, register_state.edx);
     register_state.eax = return_value as u32;
 }
 

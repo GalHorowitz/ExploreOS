@@ -185,6 +185,12 @@ fn main() -> Result<(), Box<dyn Error>>{
         return Err("Final bootloader size is too large".into());
     }
 
+    // Build the userland filesystem. Currently the filesystem is included in the kernel elf,
+    // so it has to be built before the kernel
+    if !Command::new("./build_fs.sh").current_dir("userland").status()?.success() {
+        return Err("Failed to build userland filesystem".into());
+    }
+
     // Build the kernel
     let kernel_build_dir = Path::new("build").join("kernel").canonicalize()?;
     if kernel_debug {

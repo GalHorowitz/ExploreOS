@@ -109,4 +109,5 @@ pub extern fn entry(boot_args_ptr: *const BootArgs) -> ! {
     process::switch_to_current_process();
 }
 
+// TODO: Package this better, currently changes in userland cause the kernel to re-compile
 pub const RAM_EXT2_FS: &[u8] = include_bytes!("../../userland/test_ext2.fs");

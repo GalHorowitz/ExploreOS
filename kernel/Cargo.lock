@@ -53,6 +53,7 @@ dependencies = [
  "producer_consumer",
  "range_set",
  "serial",
+ "syscall_interface",
 ]
 
 [[package]]
@@ -84,3 +85,7 @@ dependencies = [
  "cpu",
  "lock_cell",
 ]
+
+[[package]]
+name = "syscall_interface"
+version = "0.1.0"

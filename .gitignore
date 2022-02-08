@@ -4,6 +4,7 @@
 /build
 /userland/fs/bin/*
 /userland/test_ext2.fs
+/userland/target
 *.code-workspace
 bochs_serial.out
 qemu_log.txt
