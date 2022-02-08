@@ -34,7 +34,7 @@ pub extern fn entry(boot_disk_id: u8, bootloader_size: u32) -> ! {
     // Clear the screen and display a message, because if the kernel is big this might take a couple
     // seconds
     screen::reset();
-    screen::print("Welcome to the bootloader! Loading kernel from disk...\n");
+    screen::print("Welcome to the bootloader!\n");
 
     // Load and map the kernel
     let (kernel_entry, kernel_stack, new_cr3, last_page_table_paddr) =

@@ -34,8 +34,16 @@ pub fn read_kernel(boot_disk_id: u8, bootloader_size: u32) -> Option<Vec<u8>> {
 
 	let mut kernel_image: Vec<u8> = Vec::with_capacity((kernel_sector_count * 512) as usize);
 
+    let indicator_step = (kernel_sector_count / SECTOR_BUFFER_SIZE) / 10;
+    let mut indicator_idx = 0;
+    crate::screen::print("Loading kernel from disk");
 	// Read each kernel sector
     for sector_off in (0..kernel_sector_count).step_by(SECTOR_BUFFER_SIZE as usize) {
+        indicator_idx += 1;
+        if indicator_idx % indicator_step == 0 {
+            crate::screen::print(".");
+        }
+
         // We either read `SECTOR_BUFFER_SIZE` sectors, or if we are at the end of the image, the
         // remaining sectors
         let sectors_to_read = core::cmp::min(SECTOR_BUFFER_SIZE, kernel_sector_count - sector_off);
@@ -68,6 +76,7 @@ pub fn read_kernel(boot_disk_id: u8, bootloader_size: u32) -> Option<Vec<u8>> {
         // Append the read sectors to the kernel image
 		kernel_image.extend(&sector_buffer[..sectors_to_read as usize * 512]);
 	}
+    crate::screen::print("\n");
     
     serial::println!("Read kernel image: {} bytes, at {:#x?}", kernel_image.len(), kernel_image.as_ptr());
     Some(kernel_image)
